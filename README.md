@@ -129,7 +129,8 @@ Build it and the example, with MSVC (a Developer Command Prompt, or `vcvars64.ba
 
 ```bat
 cargo build --release
-cl /nologo /I include examples\game_host.c /link /LIBPATH:targetelease kaelo.lib ws2_32.lib advapi32.lib ntdll.lib userenv.lib bcrypt.lib user32.lib ole32.lib
+cl /nologo /I include examples\game_host.c /link /LIBPATH:target
+elease kaelo.lib ws2_32.lib advapi32.lib ntdll.lib userenv.lib bcrypt.lib user32.lib ole32.lib
 game_host.exe
 ```
 
@@ -143,6 +144,25 @@ Verified on this machine: the C host compiles, links and prints
 The ABI is also exercised by `tests/c_abi.rs` — 4 tests that call the exported
 symbols directly, so the calling convention and string ownership rules are covered
 on every `cargo test`.
+
+## Embedding from Goose
+
+Goose compiles to C and calls C symbols; kaelo exports a C ABI. The one rule
+Goose adds is that no reference-to-opaque and no slice crosses the FFI boundary,
+so `include/kaelo_shim.h` adapts the API: the handle comes back through an
+out-parameter, slices are passed as `(pointer, length)`, and string results are
+either copied into a caller buffer or printed on the C side.
+
+```bash
+goose build --cc cc_kaelo.bat -o embed_kaelo.exe embed_kaelo.goose
+```
+
+`cc_kaelo.bat` wraps `cl`: it adds kaelo's include dir, compiles
+`src/kaelo_shim.c` alongside the generated program, and links `kaelo.lib` plus the
+Windows libraries Rust's std needs. `examples/game_host.c` in the Goose tree is the
+sample.
+
+Verified: the host runs 600 frames and prints `1 + 1 = 2` from the script.
 
 ## Embedding from Rust
 
