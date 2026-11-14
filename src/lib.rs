@@ -67,6 +67,7 @@ impl Engine {
                 name: Rc::from(f.name.as_str()),
                 chunk: Rc::new(f.chunk),
                 n_params: f.params.len() as u32,
+                jit: std::cell::RefCell::new(None),
             };
             main.consts[f.const_idx] = Value::Func(Rc::new(obj));
         }

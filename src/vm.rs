@@ -32,6 +32,8 @@ pub struct FuncObj {
     pub name: Rc<str>,
     pub chunk: Rc<Chunk>,
     pub n_params: u32,
+    /// per-function JIT slot: None = not tried, Some(None) = not compilable
+    pub jit: RefCell<Option<Option<Rc<crate::jit::JitCode>>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -256,6 +258,9 @@ pub struct Vm {
     /// scratch for native calls, reused so a hot loop of push()/len() does not
     /// allocate a Vec per call
     args_buf: Vec<Value>,
+    /// compiled functions, keyed by the FuncObj's chunk address:
+    /// None = tried and not compilable yet
+    jit: std::collections::HashMap<usize, Option<Rc<crate::jit::JitCode>>>,
 }
 
 const MAX_STEPS: u64 = 200_000_000;
@@ -275,6 +280,7 @@ impl Vm {
             structs: HashMap::new(),
             main: None,
             args_buf: Vec::with_capacity(8),
+            jit: std::collections::HashMap::new(),
         };
         vm.install_builtins();
         vm
@@ -1031,6 +1037,41 @@ fn step(&mut self) -> R<Value> {
                                     "{}() expects {} argument(s), got {}",
                                     f.name, f.n_params, argc
                                 )));
+                            }
+                            // native call when this function has been compiled and
+                            // every argument is an int
+                            // outer None = never tried; Some(None) = tried, not
+                            // compilable; Some(Some(code)) = compiled
+                            let cached: Option<Option<Rc<crate::jit::JitCode>>> =
+                                f.jit.borrow().clone();
+                            let code_opt: Option<Rc<crate::jit::JitCode>> = match cached {
+                                Some(c) => c,
+                                None => {
+                                    let c = crate::jit::compile(&f.chunk, argc);
+                                    let rc = c.map(Rc::new);
+                                    *f.jit.borrow_mut() = Some(rc.clone());
+                                    rc
+                                }
+                            };
+                            if let Some(code) = code_opt {
+                                if argc == f.n_params as usize
+                                    && self.stack[self.stack.len() - argc..]
+                                        .iter()
+                                        .all(|v| matches!(v, Value::Int(_)))
+                                {
+                                    let mut argv: Vec<i64> = Vec::with_capacity(argc);
+                                    for v in &self.stack[self.stack.len() - argc..] {
+                                        if let Value::Int(n) = v {
+                                            argv.push(*n);
+                                        }
+                                    }
+                                    for _ in 0..argc {
+                                        self.stack.pop();
+                                    }
+                                    let out = unsafe { code.call(&argv) };
+                                    self.stack.push(Value::Int(out));
+                                    continue;
+                                }
                             }
                             self.frames[fi].ip = ip;
                             let new_base = self.stack.len() - argc;

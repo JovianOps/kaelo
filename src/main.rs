@@ -71,6 +71,7 @@ fn main() {
                         name: std::rc::Rc::from(f.name.as_str()),
                         chunk: std::rc::Rc::new(f.chunk),
                         n_params: f.params.len() as u32,
+                        jit: std::cell::RefCell::new(None),
                     };
                     main.consts[f.const_idx] = kaelo::Value::Func(std::rc::Rc::new(obj));
                 }
