@@ -5,12 +5,12 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1321 ms | 628 ms | 2.1x slower |
-| `grid` — 1000x1000 nested loop with `total = total + x * y` | 125 ms | 73 ms | 1.7x slower |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1130 ms | 628 ms | 1.8x slower |
+| `grid` — 1000x1000 nested loop with `total = total + x * y` | 123 ms | 73 ms | 1.7x slower |
 | `strcat2` — 20k `s += "ab"` (compound append) | **2.0 ms** | 2.4 ms | **1.2x faster** |
 | `strcat` — 20k `s = s + "ab"` (allocating form) | 25.8 ms | 2.4 ms | 11x slower |
-| `fib` — recursive fib(25) | 23.4 ms | 15.4 ms | 1.5x slower |
-| `sum` — build a 200k array, then sum it | 62.5 ms | 22.4 ms | 2.8x slower |
+| `fib` — recursive fib(25) | 24.0 ms | 15.4 ms | 1.6x slower |
+| `sum` — build a 200k array, then sum it | 60.5 ms | 22.4 ms | 2.7x slower |
 
 Best of 3 on both sides. The `loop` number in particular moves 10% between runs on
 this machine, so treat 1.5-2.8x as the real band rather than the exact digits.
@@ -41,6 +41,12 @@ and recursion, where CPython's inline caches and adaptive specialisation win.
 Measured cost: about 15 ns per executed instruction on the `loop` case, against
 about 8.5 ns for CPython's specialised interpreter. CPython 3.14 has inline caches
 and adaptive specialisation.
+
+Caching the current `Chunk` in a local (one `Rc` clone per frame switch instead of
+an `Rc` deref plus a `Vec` index on every instruction fetch) and keeping `ip`/`base`
+in locals rather than writing `ip` back to the frames `Vec` each instruction took
+`loop` from 1321 ms to 1130 ms and `sum` from 62.5 to 60.5 ms. That is the only VM
+change in this release that measured as a win.
 
 The slot size is `size_of::<Value>()` = 16 bytes. It started at 24 (strings were
 `Rc<str>`, a fat pointer); switching to `Rc<String>` took it to 16 and

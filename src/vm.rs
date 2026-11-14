@@ -523,6 +523,12 @@ impl Vm {
 
 fn step(&mut self) -> R<Value> {
         let mut tick: u64 = 0;
+        // frame state lives in locals on the hot path: writing ip back to the
+        // frames Vec on every instruction costs more than the dispatch itself
+        let mut fi = self.frames.len() - 1;
+        let mut chunk = self.frames[fi].chunk.clone();
+        let mut ip = self.frames[fi].ip;
+        let mut base = self.frames[fi].base;
         loop {
             tick += 1;
             if tick & 0xFFFF == 0 {
@@ -532,21 +538,15 @@ fn step(&mut self) -> R<Value> {
                     return Err(RtError::new("step limit exceeded (possible infinite loop)"));
                 }
             }
-            // one frame lookup per instruction
-            let fi = self.frames.len() - 1;
-            let (ip, base) = {
-                let f = &self.frames[fi];
-                (f.ip, f.base)
-            };
-            let op = match self.frames[fi].chunk.code.get(ip) {
+            let op = match chunk.code.get(ip) {
                 Some(op) => *op,
                 None => return Ok(Value::None),
             };
-            self.frames[fi].ip = ip + 1;
+            ip += 1;
 
             match op {
                 Op::Const(i) => {
-                    let v = self.frames[fi].chunk.consts[i as usize].clone();
+                    let v = chunk.consts[i as usize].clone();
                     self.stack.push(v);
                 }
                 Op::Pop => {
@@ -676,16 +676,16 @@ fn step(&mut self) -> R<Value> {
                     self.stack.push(Value::Bool(!t));
                 }
                 Op::Jump(off) => {
-                    self.frames[fi].ip = (self.frames[fi].ip as i32 + off) as usize;
+                    ip = (ip as i32 + off) as usize;
                 }
                 Op::JumpIfFalse(off) => {
                     let a = self.stack.pop().unwrap_or(Value::None);
                     if !a.truthy()? {
-                        self.frames[fi].ip = (self.frames[fi].ip as i32 + off) as usize;
+                        ip = (ip as i32 + off) as usize;
                     }
                 }
                 Op::Loop(off) => {
-                    self.frames[fi].ip = (self.frames[fi].ip as i32 + off) as usize;
+                    ip = (ip as i32 + off) as usize;
                 }
                 Op::Len => {
                     let a = self.stack.pop().unwrap_or(Value::None);
@@ -705,7 +705,7 @@ fn step(&mut self) -> R<Value> {
                     self.stack.push(Value::Array(Rc::new(ArrayVal { items: RefCell::new(items), frozen })));
                 }
                 Op::Struct(name_id, n) => {
-                    let name = self.frames[fi].chunk.names[name_id as usize].to_string();
+                    let name = chunk.names[name_id as usize].to_string();
                     let decl = match self.structs.get(&name) {
                         Some(d) => d.clone(),
                         None => return Err(RtError::new(format!("unknown struct '{}'", name))),
@@ -722,7 +722,7 @@ fn step(&mut self) -> R<Value> {
                     self.stack.push(Value::Struct(Rc::new(RefCell::new(map))));
                 }
                 Op::Field(name_id) => {
-                    let name = self.frames[fi].chunk.names[name_id as usize].to_string();
+                    let name = chunk.names[name_id as usize].to_string();
                     let base_v = self.stack.pop().unwrap_or(Value::None);
                     match base_v {
                         Value::Struct(m) => {
@@ -736,7 +736,7 @@ fn step(&mut self) -> R<Value> {
                     }
                 }
                 Op::FieldSet(name_id) => {
-                    let name = self.frames[fi].chunk.names[name_id as usize].to_string();
+                    let name = chunk.names[name_id as usize].to_string();
                     let val = self.stack.pop().unwrap_or(Value::None);
                     let base_v = self.stack.pop().unwrap_or(Value::None);
                     match base_v {
@@ -820,9 +820,14 @@ fn step(&mut self) -> R<Value> {
                                     f.name, f.n_params, argc
                                 )));
                             }
-                            let base = self.stack.len() - argc;
-                            let chunk = f.chunk.clone();
-                            self.enter(chunk, base);
+                            self.frames[fi].ip = ip;
+                            let new_base = self.stack.len() - argc;
+                            let callee_chunk = f.chunk.clone();
+                            self.enter(callee_chunk, new_base);
+                            fi = self.frames.len() - 1;
+                            chunk = self.frames[fi].chunk.clone();
+                            ip = self.frames[fi].ip;
+                            base = self.frames[fi].base;
                         }
                         other => {
                             return Err(RtError::new(format!("{} is not callable", other.type_name())));
@@ -837,6 +842,10 @@ fn step(&mut self) -> R<Value> {
                     if self.frames.is_empty() {
                         return Ok(ret);
                     }
+                    fi = self.frames.len() - 1;
+                    chunk = self.frames[fi].chunk.clone();
+                    ip = self.frames[fi].ip;
+                    base = self.frames[fi].base;
                 }
             }
         }
