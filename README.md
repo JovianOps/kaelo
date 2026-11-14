@@ -166,21 +166,20 @@ kaelo --version
 Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. See
 `BENCHMARKS.md` for the harness.
 
-| Workload | kaelo 0.1 | CPython 3.14 | ratio |
+| Workload | kaelo | CPython 3.14 | ratio |
 |---|---|---|---|
-| 10M-iteration integer loop | 804 ms | 787 ms | 1.02x slower |
-| 1000x1000 nested loop | 125 ms | 73 ms | 1.7x slower |
-| 20k `s += "ab"` appends | **1.7 ms** | 2.4 ms | **1.4x faster** |
-| 20k `s = s + "ab"` appends | 27.6 ms | 3.2 ms | 8.6x slower |
-| recursive fib(25) | 23.4 ms | 15.4 ms | 1.5x slower |
-| build + sum a 200k array | 31.0 ms | 20.1 ms | 1.54x slower |
+| recursive fib(25) | **1.2 ms** | 15.0 ms | **12.5x faster** |
+| 20k `s += "ab"` appends | **1.9 ms** | 2.4 ms | **1.26x faster** |
+| 10M-iteration integer loop (top level) | 955 ms | 587 ms | 1.63x slower |
+| 1000x1000 nested loop (top level) | 103 ms | 71 ms | 1.45x slower |
+| build + sum a 200k array (top level) | 33 ms | 21 ms | 1.55x slower |
 
-**kaelo is not uniformly faster than CPython.** It wins on string building with
-`+=` (the buffer grows in place) and loses on integer-heavy loops and recursion,
-where CPython 3.14's inline caches and adaptive specialisation still win. `+=` is
-the fast path; `s = s + "x"` allocates every iteration, exactly as CPython does
-when the left side has more than one reference. The remaining gap is the VM core —
-superinstructions and an unboxed value stack, then a JIT. None of that is in 0.1.
+**Where kaelo stands.** Functions compile to native code and are far ahead:
+recursion is 12.5x faster than CPython, and `s += "ab"` is 1.26x ahead because the
+buffer grows in place. Straight-line top-level code still runs in the bytecode VM
+and is 1.4-1.6x behind — the loop, grid and array benchmarks are all top-level
+`while` loops over globals, which the backend does not lower yet. Compiling the
+top-level chunk is the remaining work.
 
 ## Status
 

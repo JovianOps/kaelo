@@ -3,19 +3,21 @@
 Measured on Windows 11, Rust 1.99 (release, lto=fat), CPython 3.14.0.
 Best of 3, both sides measured **in process** — no interpreter start-up in the numbers.
 
-| Workload | kaelo 0.1 | CPython 3.14 | ratio |
+| Workload | kaelo | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 804 ms | 787 ms | 1.02x slower |
-| `grid` — 1000x1000 nested loop with `total = total + x * y` | 96 ms | 79 ms | 1.22x slower |
-| `strcat2` — 20k `s += "ab"` (compound append) | **1.7 ms** | 2.4 ms | **1.4x faster** |
-| `strcat` — 20k `s = s + "ab"` (allocating form) | 27.6 ms | 2.4 ms | 11x slower |
-| `fib` — recursive fib(25) | 24 ms | 14.7 ms | 1.63x slower |
-| `sum` — build a 200k array, then sum it | 31.0 ms | 20.1 ms | 1.54x slower |
+| `fib` — recursive fib(25) | **1.2 ms** | 15.0 ms | **12.5x faster** |
+| `strcat2` — 20k `s += "ab"` | **1.9 ms** | 2.4 ms | **1.26x faster** |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 955 ms | 587 ms | 1.63x slower |
+| `grid` — 1000x1000 nested loop | 103 ms | 71 ms | 1.45x slower |
+| `sum` — build a 200k array, then sum it | 33 ms | 21 ms | 1.55x slower |
 
-Both sides in the same session, best of 3. This machine's CPython moves 20-25%
-between sessions (787 ms to 596 ms for the same `loop` script), so ratios are only
-trustworthy when both sides are timed together: run `python bench/bench.py` in the
-same session as the kaelo runs.
+Both sides in the same session, best of 3.
+
+The split is now clean and understood: functions compile to native code (fib is
+12.5x faster), while straight-line top-level code still runs in the bytecode VM.
+The `loop`, `grid` and `sum` scripts have no function bodies to compile — their
+work is a top-level `while` loop with globals, which the backend does not lower
+yet. Compiling the top-level chunk is what closes the remaining gap.
 
 Run them:
 

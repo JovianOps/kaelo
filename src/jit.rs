@@ -25,11 +25,50 @@ pub struct JitCode {
 
 impl JitCode {
     /// Call with `n` i64 arguments; `fns` is the call table (one slot per
-    // global id). Returns the first result.
+    /// global id). Arguments go in registers, not through an argv array.
     pub unsafe fn call(&self, args: &[i64], fns: *const *const u8) -> i64 {
-        let f: extern "C" fn(usize, *const i64, *const *const u8) -> i64 =
-            std::mem::transmute(self.ptr);
-        f(args.len(), args.as_ptr(), fns)
+        if std::env::var("KAELO_TRACE").is_ok() {
+            eprintln!("[jit call] args={:?} fns={:p}", args, fns);
+        }
+        match args.len() {
+        0 => {
+            let f: extern "C" fn(i64, *const *const u8) -> i64 = std::mem::transmute(self.ptr);
+            f(0, fns)
+        }
+        1 => {
+            let f: extern "C" fn(i64, *const *const u8, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(1, fns, args[0])
+        }
+        2 => {
+            let f: extern "C" fn(i64, *const *const u8, i64, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(2, fns, args[0], args[1])
+        }
+        3 => {
+            let f: extern "C" fn(i64, *const *const u8, i64, i64, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(3, fns, args[0], args[1], args[2])
+        }
+        4 => {
+            let f: extern "C" fn(i64, *const *const u8, i64, i64, i64, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(4, fns, args[0], args[1], args[2], args[3])
+        }
+        5 => {
+            let f: extern "C" fn(i64, *const *const u8, i64, i64, i64, i64, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(5, fns, args[0], args[1], args[2], args[3], args[4])
+        }
+        6 => {
+            let f: extern "C" fn(i64, *const *const u8, i64, i64, i64, i64, i64, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(6, fns, args[0], args[1], args[2], args[3], args[4], args[5])
+        }
+        7 => {
+            let f: extern "C" fn(i64, *const *const u8, i64, i64, i64, i64, i64, i64, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(7, fns, args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+        }
+        8 => {
+            let f: extern "C" fn(i64, *const *const u8, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 = std::mem::transmute(self.ptr);
+            f(8, fns, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7])
+        }
+            _ => 0,
+        }
     }
 }
 
@@ -77,8 +116,10 @@ pub fn compile(
     let mut ctx = Context::new();
     let mut sig = Signature::new(isa.default_call_conv());
     sig.params.push(AbiParam::new(types::I64)); // argc
-    sig.params.push(AbiParam::new(types::I64)); // argv
     sig.params.push(AbiParam::new(types::I64)); // call table: *const *const u8
+    for _ in 0..n_params {
+        sig.params.push(AbiParam::new(types::I64));
+    }
     sig.returns.push(AbiParam::new(types::I64));
     ctx.func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
 
@@ -104,8 +145,7 @@ pub fn compile(
 
     let entry = builder.create_block();
     builder.append_block_params_for_function_params(entry);
-    let argv_v = builder.block_params(entry)[1];
-    let table_v = builder.block_params(entry)[2];
+    let table_v = builder.block_params(entry)[1];
 
     let vars: Vec<Variable> = (0..n_locals).map(|_| builder.declare_var(types::I64)).collect();
 
@@ -118,8 +158,7 @@ pub fn compile(
     builder.switch_to_block(entry);
     for slot in 0..n_locals {
         let v = if slot < n_params {
-            let addr = builder.ins().iadd_imm(argv_v, (slot as i64) * 8);
-            builder.ins().load(types::I64, MemFlagsData::new(), addr, 0)
+            builder.block_params(entry)[2 + slot]
         } else {
             builder.ins().iconst(types::I64, 0)
         };
@@ -137,14 +176,7 @@ pub fn compile(
     let mut st: Vec<V> = Vec::new();
     let mut result: Option<V> = None;
     let mut last_global: Option<u32> = None;
-    let callee_sig = builder.import_signature({
-        let mut s = Signature::new(isa.default_call_conv());
-        s.params.push(AbiParam::new(types::I64)); // argc
-        s.params.push(AbiParam::new(types::I64)); // argv
-        s.params.push(AbiParam::new(types::I64)); // call table
-        s.returns.push(AbiParam::new(types::I64));
-        s
-    });
+    let mut sig_cache: Vec<Option<cranelift_codegen::ir::SigRef>> = Vec::new();
 
     for (ip, op) in code.iter().enumerate() {
         builder.switch_to_block(blocks[ip]);
@@ -218,22 +250,42 @@ pub fn compile(
                 }
                 let idx = gid as i64;
                 let argc = *argc as usize;
-                // args are on the stack above the callee slot; the compiler emits
-                // args then LoadGlobal, so drop nothing and take the top argc
+                // the callee placeholder was pushed LAST (args, LoadGlobal, Call),
+                // so it is on top: pop it first, then the arguments
+                if st.pop().is_none() {
+                    return None;
+                }
                 let mut argv_vals: Vec<V> = Vec::with_capacity(argc);
                 for _ in 0..argc {
                     argv_vals.push(st.pop()?);
                 }
                 argv_vals.reverse();
-                // the callee value sits below the args: drop it
-                if st.pop().is_none() {
-                    return None;
-                }
                 let addr = builder.ins().iadd_imm(table_v, idx * 8);
                 let fp = builder.ins().load(types::I64, MemFlagsData::new(), addr, 0);
+                if sig_cache.len() <= argc {
+                    sig_cache.resize(argc + 1, None);
+                }
+                let callee_sig = match sig_cache[argc] {
+                    Some(s) => s,
+                    None => {
+                        let mut cs = Signature::new(isa.default_call_conv());
+                        cs.params.push(AbiParam::new(types::I64));
+                        cs.params.push(AbiParam::new(types::I64));
+                        for _ in 0..argc {
+                            cs.params.push(AbiParam::new(types::I64));
+                        }
+                        cs.returns.push(AbiParam::new(types::I64));
+                        let r = builder.import_signature(cs);
+                        sig_cache[argc] = Some(r);
+                        r
+                    }
+                };
                 let argc_v = builder.ins().iconst(types::I64, argc as i64);
-                let mut args: Vec<V> = vec![argc_v];
+                let mut args: Vec<V> = vec![argc_v, table_v];
                 args.extend(argv_vals);
+                if std::env::var("KAELO_TRACE").is_ok() {
+                    eprintln!("[jit call] gid={} idx={} argc={}", gid, idx, argc);
+                }
                 let call = builder.ins().call_indirect(callee_sig, fp, &args);
                 st.push(builder.inst_results(call)[0]);
             }
