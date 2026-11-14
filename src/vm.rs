@@ -34,7 +34,14 @@ pub struct FuncObj {
     pub n_params: u32,
 }
 
-pub struct NativeFn(pub Box<dyn Fn(&mut Vm, &[Value]) -> R<Value>>);
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Builtin {
+    Len,
+    Push,
+    Pop,
+}
+
+pub struct NativeFn(pub Box<dyn Fn(&mut Vm, &[Value]) -> R<Value>>, pub Option<Builtin>);
 
 #[derive(Clone)]
 pub enum Value {
@@ -351,26 +358,26 @@ impl Vm {
 
     fn install_builtins(&mut self) {
         macro_rules! def {
-            ($name:expr, $f:expr) => {{
+            ($name:expr, $tag:expr, $f:expr) => {{
                 let f: Box<dyn Fn(&mut Vm, &[Value]) -> R<Value>> = Box::new($f);
-                self.define_global($name, Value::Native(Rc::new(NativeFn(f))));
+                self.define_global($name, Value::Native(Rc::new(NativeFn(f, $tag))));
             }};
         }
 
-        def!("print", |vm, args| {
+        def!("print", None, |vm, args| {
             let parts: Vec<String> = args.iter().map(|v| v.render()).collect();
             let _ = writeln!(vm.out.borrow_mut(), "{}", parts.join(" "));
             Ok(Value::None)
         });
 
-        def!("len", |_, args| match args.first() {
+        def!("len", Some(Builtin::Len), |_, args| match args.first() {
             Some(Value::Str(s)) => Ok(Value::Int(s.len() as i64)),
             Some(Value::Array(a)) => Ok(Value::Int(a.items.borrow().len() as i64)),
             Some(other) => Err(RtError::new(format!("len() needs string or array, got {}", other.type_name()))),
             None => Err(RtError::new("len() needs 1 argument")),
         });
 
-        def!("push", |_, args| match (args.first(), args.get(1)) {
+        def!("push", Some(Builtin::Push), |_, args| match (args.first(), args.get(1)) {
             (Some(Value::Array(a)), Some(v)) => {
                 if a.frozen {
                     return Err(RtError::new("cannot mutate an immutable array (declared with let)"));
@@ -382,7 +389,7 @@ impl Vm {
             _ => Err(RtError::new("push() needs 2 arguments")),
         });
 
-        def!("pop", |_, args| match args.first() {
+        def!("pop", Some(Builtin::Pop), |_, args| match args.first() {
             Some(Value::Array(a)) => {
                 if a.frozen {
                     return Err(RtError::new("cannot mutate an immutable array (declared with let)"));
@@ -393,12 +400,12 @@ impl Vm {
             None => Err(RtError::new("pop() needs 1 argument")),
         });
 
-        def!("str", |_, args| match args.first() {
+        def!("str", None, |_, args| match args.first() {
             Some(v) => Ok(Value::Str(Rc::new(v.render()))),
             None => Err(RtError::new("str() needs 1 argument")),
         });
 
-        def!("int", |_, args| match args.first() {
+        def!("int", None, |_, args| match args.first() {
             Some(Value::Int(i)) => Ok(Value::Int(*i)),
             Some(Value::Float(f)) => Ok(Value::Int(*f as i64)),
             Some(Value::Str(s)) => s.trim().parse::<i64>().map(Value::Int).map_err(|_| {
@@ -408,7 +415,7 @@ impl Vm {
             None => Err(RtError::new("int() needs 1 argument")),
         });
 
-        def!("float", |_, args| match args.first() {
+        def!("float", None, |_, args| match args.first() {
             Some(Value::Float(f)) => Ok(Value::Float(*f)),
             Some(Value::Int(i)) => Ok(Value::Float(*i as f64)),
             Some(Value::Str(s)) => s.trim().parse::<f64>().map(Value::Float).map_err(|_| {
@@ -420,7 +427,7 @@ impl Vm {
 
         macro_rules! math1 {
             ($name:expr, $f:expr) => {
-                def!($name, move |_, args| match args.first() {
+                def!($name, None, move |_, args| match args.first() {
                     Some(Value::Int(i)) => Ok(Value::Float($f(*i as f64))),
                     Some(Value::Float(x)) => Ok(Value::Float($f(*x))),
                     Some(other) => Err(RtError::new(format!("{}() needs number, got {}", $name, other.type_name()))),
@@ -436,28 +443,28 @@ impl Vm {
         math1!("floor", |x: f64| x.floor());
         math1!("ceil", |x: f64| x.ceil());
 
-        def!("round", |_, args| match args.first() {
+        def!("round", None, |_, args| match args.first() {
             Some(Value::Float(x)) => Ok(Value::Int(x.round() as i64)),
             Some(Value::Int(i)) => Ok(Value::Int(*i)),
             Some(other) => Err(RtError::new(format!("round() needs number, got {}", other.type_name()))),
             None => Err(RtError::new("round() needs 1 argument")),
         });
 
-        def!("min", |_, args| match (args.first(), args.get(1)) {
+        def!("min", None, |_, args| match (args.first(), args.get(1)) {
             (Some(Value::Int(a)), Some(Value::Int(b))) => Ok(Value::Int((*a).min(*b))),
             (Some(Value::Float(a)), Some(Value::Float(b))) => Ok(Value::Float(a.min(*b))),
             _ => Err(RtError::new("min() needs two numbers")),
         });
 
-        def!("max", |_, args| match (args.first(), args.get(1)) {
+        def!("max", None, |_, args| match (args.first(), args.get(1)) {
             (Some(Value::Int(a)), Some(Value::Int(b))) => Ok(Value::Int((*a).max(*b))),
             (Some(Value::Float(a)), Some(Value::Float(b))) => Ok(Value::Float(a.max(*b))),
             _ => Err(RtError::new("max() needs two numbers")),
         });
 
-        def!("rand", |vm, _| Ok(Value::Float(vm.next_rand())));
+        def!("rand", None, |vm, _| Ok(Value::Float(vm.next_rand())));
 
-        def!("rand_int", |vm, args| match (args.first(), args.get(1)) {
+        def!("rand_int", None, |vm, args| match (args.first(), args.get(1)) {
             (Some(Value::Int(lo)), Some(Value::Int(hi))) => {
                 if hi < lo {
                     return Err(RtError::new("rand_int() high < low"));
@@ -468,14 +475,14 @@ impl Vm {
             _ => Err(RtError::new("rand_int() needs two ints")),
         });
 
-        def!("seed", |vm, args| {
+        def!("seed", None, |vm, args| {
             if let Some(Value::Int(s)) = args.first() {
                 vm.rng = (*s as u64) | 1;
             }
             Ok(Value::None)
         });
 
-        def!("now_ms", |_, _| {
+        def!("now_ms", None, |_, _| {
             let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
             Ok(Value::Int(d.as_millis() as i64))
         });
@@ -899,7 +906,65 @@ fn step(&mut self) -> R<Value> {
                         None => return Err(RtError::new("stack underflow at call")),
                     };
                     match callee {
-                        Value::Native(n) => {
+                        Value::Native(n) => match n.1 {
+                            // inlined: the indirect call plus the argument buffer
+                            // costs more than the work these three do
+                            Some(Builtin::Len) if argc == 1 => {
+                                let a = self.stack.pop().unwrap_or(Value::None);
+                                let len = match &a {
+                                    Value::Str(s) => s.len() as i64,
+                                    Value::Array(arr) => arr.items.borrow().len() as i64,
+                                    other => {
+                                        return Err(RtError::new(format!(
+                                            "len() needs string or array, got {}",
+                                            other.type_name()
+                                        )))
+                                    }
+                                };
+                                self.stack.push(Value::Int(len));
+                            }
+                            Some(Builtin::Push) if argc == 2 => {
+                                let v = self.stack.pop().unwrap_or(Value::None);
+                                let a = self.stack.pop().unwrap_or(Value::None);
+                                match a {
+                                    Value::Array(arr) => {
+                                        if arr.frozen {
+                                            return Err(RtError::new(
+                                                "cannot mutate an immutable array (declared with let)",
+                                            ));
+                                        }
+                                        arr.items.borrow_mut().push(v);
+                                        self.stack.push(Value::None);
+                                    }
+                                    other => {
+                                        return Err(RtError::new(format!(
+                                            "push() needs array, got {}",
+                                            other.type_name()
+                                        )))
+                                    }
+                                }
+                            }
+                            Some(Builtin::Pop) if argc == 1 => {
+                                let a = self.stack.pop().unwrap_or(Value::None);
+                                match a {
+                                    Value::Array(arr) => {
+                                        if arr.frozen {
+                                            return Err(RtError::new(
+                                                "cannot mutate an immutable array (declared with let)",
+                                            ));
+                                        }
+                                        let out = arr.items.borrow_mut().pop().unwrap_or(Value::None);
+                                        self.stack.push(out);
+                                    }
+                                    other => {
+                                        return Err(RtError::new(format!(
+                                            "pop() needs array, got {}",
+                                            other.type_name()
+                                        )))
+                                    }
+                                }
+                            }
+                            _ => {
                             let start = self.stack.len().saturating_sub(argc);
                             self.args_buf.clear();
                             self.args_buf.extend_from_slice(&self.stack[start..]);
@@ -908,7 +973,8 @@ fn step(&mut self) -> R<Value> {
                             let v = (n.0)(self, &buf);
                             self.args_buf = buf;
                             self.stack.push(v?);
-                        }
+                            }
+                        },
                         Value::Func(f) => {
                             if argc != f.n_params as usize {
                                 return Err(RtError::new(format!(

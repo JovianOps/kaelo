@@ -86,7 +86,7 @@ impl Engine {
     /// Register a host function the script can call — the embedding hook for
     /// engine APIs (draw, input, audio...).
     pub fn host_fn(&mut self, name: &str, f: Box<dyn Fn(&mut Vm, &[Value]) -> Result<Value, RtError>>) {
-        self.vm.define_global(name, Value::Native(Rc::new(vm::NativeFn(f))));
+        self.vm.define_global(name, Value::Native(Rc::new(vm::NativeFn(f, None))));
     }
 
     pub fn set_output(&mut self, out: Rc<RefCell<dyn Write>>) {
