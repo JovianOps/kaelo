@@ -5,11 +5,11 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1514 ms | 567 ms | 2.7× slower |
-| `grid` — 1000×1000 nested loop with `total = total + x * y` | 142 ms | 67 ms | 2.1× slower |
-| `strcat` — 20k `s = s + "ab"` | 40 ms | 2.3 ms | 17× slower |
-| `fib` — recursive fib(25) | 24.6 ms | 14.2 ms | 1.7× slower |
-| `sum` — build a 200k array, then sum it | 63.5 ms | 22.8 ms | 2.8× slower |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1490 ms | 688 ms | 2.2× slower |
+| `grid` — 1000×1000 nested loop with `total = total + x * y` | 132 ms | 83 ms | 1.6× slower |
+| `strcat` — 20k `s = s + "ab"` | 37 ms | 2.4 ms | 15× slower |
+| `fib` — recursive fib(25) | 25.6 ms | 14.4 ms | 1.8× slower |
+| `sum` — build a 200k array, then sum it | 66.2 ms | 21.9 ms | 3.0× slower |
 
 Run them:
 
@@ -21,7 +21,7 @@ sh examples/bench_all.sh    # kaelo side
 
 ## Where this stands
 
-kaelo 0.1 is **not faster than CPython 3.14**. It is 1.7–2.8x slower across a
+kaelo 0.1 is **not faster than CPython 3.14**. It is 1.6–3.0x slower across a
 representative mix, and far slower on repeated string concatenation (CPython reuses
 the buffer when a string has one reference; kaelo always allocates).
 

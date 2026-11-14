@@ -111,7 +111,7 @@ impl From<f64> for Value {
 
 impl From<&str> for Value {
     fn from(v: &str) -> Self {
-        Value::Str(Rc::from(v))
+        Value::Str(Rc::new(v.to_string()))
     }
 }
 

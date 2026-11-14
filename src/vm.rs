@@ -41,7 +41,7 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
-    Str(Rc<str>),
+    Str(Rc<String>),
     Array(Rc<ArrayVal>),
     Struct(Rc<RefCell<HashMap<String, Value>>>),
     Func(Rc<FuncObj>),
@@ -354,7 +354,7 @@ impl Vm {
         });
 
         def!("str", |_, args| match args.first() {
-            Some(v) => Ok(Value::Str(Rc::from(v.render().as_str()))),
+            Some(v) => Ok(Value::Str(Rc::new(v.render()))),
             None => Err(RtError::new("str() needs 1 argument")),
         });
 
@@ -702,7 +702,7 @@ fn step(&mut self) -> R<Value> {
                             }
                             let chars: Vec<char> = s.chars().collect();
                             match chars.get(n as usize) {
-                                Some(c) => self.stack.push(Value::Str(Rc::from(c.to_string().as_str()))),
+                                Some(c) => self.stack.push(Value::Str(Rc::new(c.to_string()))),
                                 None => return Err(RtError::new(format!("index out of bounds: {} (length {})", n, chars.len()))),
                             }
                         }
@@ -773,7 +773,21 @@ fn step(&mut self) -> R<Value> {
         }
     }
     #[inline(always)]
-    fn binop(&mut self, op: Op, a: Value, b: Value) -> R<Value> {
+    fn binop(&mut self, op: Op, mut a: Value, mut b: Value) -> R<Value> {
+        // string append: grow in place when this value owns the only reference,
+        // which turns `s = s + "ab"` in a loop from O(n^2) into amortised growth
+        if matches!(op, Op::Add) {
+            if let (Value::Str(x), Value::Str(_)) = (&mut a, &b) {
+                if let Some(buf) = Rc::get_mut(x) {
+                    let extra = match &b {
+                        Value::Str(y) => y.to_string(),
+                        _ => String::new(),
+                    };
+                    buf.push_str(&extra);
+                    return Ok(a);
+                }
+            }
+        }
         use Op::*;
         match (&a, &b) {
             (Value::Int(x), Value::Int(y)) => {
@@ -823,7 +837,7 @@ fn step(&mut self) -> R<Value> {
                 _ => return Err(RtError::new("bad opcode")),
             })),
             (Value::Str(x), Value::Str(y)) => match op {
-                Add => Ok(Value::Str(Rc::from(format!("{}{}", x, y).as_str()))),
+                Add => Ok(Value::Str(Rc::new(format!("{}{}", x, y)))),
                 Eq => Ok(Value::Bool(x == y)),
                 Ne => Ok(Value::Bool(x != y)),
                 Lt => Ok(Value::Bool(x < y)),

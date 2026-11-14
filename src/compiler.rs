@@ -369,7 +369,7 @@ impl Compiler {
                 ctx.emit(if *b { Op::True } else { Op::False });
             }
             Expr::Str(s) => {
-                let idx = ctx.const_idx(Value::Str(Rc::from(s.as_str())));
+                let idx = ctx.const_idx(Value::Str(Rc::new(s.clone())));
                 ctx.emit(Op::Const(idx));
             }
             Expr::NoneLit => {
