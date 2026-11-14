@@ -12,7 +12,7 @@ fn compile_fn(src: &str, name: &str, n_params: usize) -> Option<kaelo::jit::JitC
     // find the function's chunk among the constants
     for f in &compiled.fns {
         if f.name == name {
-            return kaelo::jit::compile(&f.chunk, n_params);
+            return kaelo::jit::compile(&f.chunk, n_params, &std::collections::HashSet::new());
         }
     }
     None
@@ -42,7 +42,7 @@ fn sum_to(n) {
 
     let mut ok = true;
     for n in [0i64, 1, 2, 10, 100, 1000] {
-        let got = unsafe { jit.call(&[n]) };
+        let got = unsafe { jit.call(&[n], std::ptr::null()) };
         let want = (0..n).sum::<i64>();
         if got != want {
             println!("MISMATCH n={} jit={} want={}", n, got, want);
@@ -56,7 +56,7 @@ fn sum_to(n) {
     let t = std::time::Instant::now();
     let mut acc = 0i64;
     for _ in 0..iters {
-        acc = unsafe { jit.call(&[1000]) };
+        acc = unsafe { jit.call(&[1000], std::ptr::null()) };
     }
     let d = t.elapsed().as_secs_f64();
     println!(
