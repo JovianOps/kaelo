@@ -39,9 +39,15 @@ With that fixed, the remaining gap is entirely in the VM core: integer-heavy loo
 and recursion, where CPython's inline caches and adaptive specialisation win.
 
 Measured cost: about 15 ns per executed instruction on the `loop` case, against
-about 8.5 ns for CPython's specialised interpreter. A switch-dispatch VM with a
-24-byte tagged value on a `Vec` stack lands in that range; CPython 3.14 has inline
-caches and adaptive specialisation.
+about 8.5 ns for CPython's specialised interpreter. CPython 3.14 has inline caches
+and adaptive specialisation.
+
+The slot size is `size_of::<Value>()` = 16 bytes. It started at 24 (strings were
+`Rc<str>`, a fat pointer); switching to `Rc<String>` took it to 16 and
+`Option<Value>` followed via the pointer niche. The remaining lever on the VM side
+is getting the slot to 8 bytes, which means either NaN-boxing (and then either
+giving up the full i64 range or keeping a box table for large ints) or a JIT.
+Both are rewrites, not tuning passes.
 
 ## What closes the gap
 
