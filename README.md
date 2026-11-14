@@ -125,10 +125,24 @@ for (int i = 0; i < 600; i++) {
 kaelo_close(k);
 ```
 
-Build: `cargo build --release`, then link `target/release/kaelo.lib` (MSVC) or
-`-lkaelo` (gcc/clang). The ABI is exercised by `tests/c_abi.rs` — 4 tests that call
-the exported symbols directly, so the calling convention and the string ownership
-rules are covered on every `cargo test`.
+Build it and the example, with MSVC (a Developer Command Prompt, or `vcvars64.bat` first):
+
+```bat
+cargo build --release
+cl /nologo /I include examples\game_host.c /link /LIBPATH:targetelease kaelo.lib ws2_32.lib advapi32.lib ntdll.lib userenv.lib bcrypt.lib user32.lib ole32.lib
+game_host.exe
+```
+
+The extra `.lib`s are what Rust's std pulls in (sockets, process, crypto); without
+them the link fails with unresolved externals. With gcc/clang: `-lkaelo -lws2_32
+-ladvapi32 -lntdll -luserenv -lbcrypt`.
+
+Verified on this machine: the C host compiles, links and prints
+`after 600 frames: x = 24, draw() called 600 times`.
+
+The ABI is also exercised by `tests/c_abi.rs` — 4 tests that call the exported
+symbols directly, so the calling convention and string ownership rules are covered
+on every `cargo test`.
 
 ## Embedding from Rust
 

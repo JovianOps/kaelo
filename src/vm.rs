@@ -693,9 +693,16 @@ impl Vm {
             None => return Err(RtError::new(format!("undefined function '{}'", name))),
         };
         let f = match self.globals.get(id) {
-            Some(Value::Func(f)) => f.clone(),
-            Some(_) => return Err(RtError::new(format!("'{}' is not a function", name))),
+            Some(v) => v.clone(),
             None => return Err(RtError::new(format!("undefined function '{}'", name))),
+        };
+        // host-registered natives are callable too (Engine::call / kaelo_call_*)
+        if let Value::Native(n) = &f {
+            return (n.0)(self, args);
+        }
+        let f = match f {
+            Value::Func(f) => f,
+            _ => return Err(RtError::new(format!("'{}' is not a function", name))),
         };
         if args.len() != f.n_params as usize {
             return Err(RtError::new(format!(
