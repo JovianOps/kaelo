@@ -134,17 +134,22 @@ kaelo --version
 
 ## Benchmarks
 
-Measured on Windows 11, Rust 1.99, CPython 3.14, best of 3. See `BENCHMARKS.md`.
+Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. See
+`BENCHMARKS.md` for the harness.
 
-| Workload | kaelo | CPython | ratio |
+| Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| 10M-iteration arithmetic loop | 1.44 s | 2.34 s | 1.6× faster |
-| build + sum a 200k array | 63 ms | 62 ms | parity |
-| recursive fib(25) | 23.4 ms | 13.0 ms | 1.8× slower |
+| 10M-iteration integer loop | 1514 ms | 567 ms | 2.7x slower |
+| 1000x1000 nested loop | 142 ms | 67 ms | 2.1x slower |
+| 20k string concatenations | 40 ms | 2.3 ms | 17x slower |
+| recursive fib(25) | 24.6 ms | 14.2 ms | 1.7x slower |
+| build + sum a 200k array | 63.5 ms | 22.8 ms | 2.8x slower |
 
-kaelo 0.1 is a bytecode VM, not a JIT: it wins on straight-line integer work and is
-behind on recursion-heavy code. Both numbers are in `BENCHMARKS.md` rather than
-rounded in kaelo's favour.
+**kaelo 0.1 is not faster than CPython yet.** It is a switch-dispatch bytecode VM
+with a 24-byte tagged value; CPython 3.14 has inline caches and adaptive
+specialisation, and beats it on every workload above. The path to parity is
+superinstructions and an unboxed value stack, then a JIT — none of which are in
+0.1. The language surface and the memory-safety rules are done; the speed is not.
 
 ## Status
 

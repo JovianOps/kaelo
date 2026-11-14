@@ -165,6 +165,36 @@ pub struct Frame {
     pub base: usize,
 }
 
+#[inline(always)]
+fn int_binop(op: Op, x: i64, y: i64) -> R<Value> {
+    let overflow = || RtError::new("integer overflow (checked arithmetic is on)");
+    let v = match op {
+        Op::Add => x.checked_add(y).ok_or_else(overflow)?,
+        Op::Sub => x.checked_sub(y).ok_or_else(overflow)?,
+        Op::Mul => x.checked_mul(y).ok_or_else(overflow)?,
+        Op::Div => {
+            if y == 0 {
+                return Err(RtError::new("division by zero"));
+            }
+            x.checked_div(y).ok_or_else(overflow)?
+        }
+        Op::Mod => {
+            if y == 0 {
+                return Err(RtError::new("modulo by zero"));
+            }
+            x.checked_rem(y).ok_or_else(overflow)?
+        }
+        Op::Eq => return Ok(Value::Bool(x == y)),
+        Op::Ne => return Ok(Value::Bool(x != y)),
+        Op::Lt => return Ok(Value::Bool(x < y)),
+        Op::Le => return Ok(Value::Bool(x <= y)),
+        Op::Gt => return Ok(Value::Bool(x > y)),
+        Op::Ge => return Ok(Value::Bool(x >= y)),
+        _ => return Err(RtError::new("bad opcode")),
+    };
+    Ok(Value::Int(v))
+}
+
 pub struct Vm {
     pub globals: Vec<Value>,
     global_kind: Vec<u8>, // 0 = undeclared, 1 = let, 2 = var
@@ -552,6 +582,13 @@ fn step(&mut self) -> R<Value> {
                 Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Eq | Op::Ne | Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let b = self.stack.pop().unwrap_or(Value::None);
                     let a = self.stack.pop().unwrap_or(Value::None);
+                    // integer fast path: the common case skips the generic binop
+                    if let (Value::Int(x), Value::Int(y)) = (&a, &b) {
+                        let (x, y) = (*x, *y);
+                        let v = int_binop(op, x, y)?;
+                        self.stack.push(v);
+                        continue;
+                    }
                     let v = self.binop(op, a, b)?;
                     self.stack.push(v);
                 }
@@ -735,6 +772,7 @@ fn step(&mut self) -> R<Value> {
             }
         }
     }
+    #[inline(always)]
     fn binop(&mut self, op: Op, a: Value, b: Value) -> R<Value> {
         use Op::*;
         match (&a, &b) {
