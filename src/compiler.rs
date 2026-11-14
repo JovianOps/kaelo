@@ -58,6 +58,9 @@ impl FnCtx {
             Op::Jump(_) => self.code[at] = Op::Jump(here - target),
             Op::JumpIfFalse(_) => self.code[at] = Op::JumpIfFalse(here - target),
             Op::Loop(_) => self.code[at] = Op::Loop(here - target),
+            Op::IterNext(a, b, c, _) => {
+                self.code[at] = Op::IterNext(a, b, c, here - target)
+            }
             _ => {}
         }
     }
@@ -280,31 +283,20 @@ impl Compiler {
                 Ok(())
             }
             Stmt::ForIn { name, iter, body } => {
-                // desugar: for x in it { body }  ->
-                //   tmp_arr = it; tmp_i = 0;
-                //   loop: if tmp_i >= len(tmp_arr) break;
-                //         x = tmp_arr[tmp_i]; body; tmp_i = tmp_i + 1; loop
+                // for x in it { body }  ->
+                //   @arr = it; @i = 0
+                //   loop: IterNext(@arr, @i, x) or exit; body; IncrLocal(@i); loop
                 let arr_slot = ctx.declare_local("@arr", true);
                 let i_slot = ctx.declare_local("@i", true);
                 let x_slot = ctx.declare_local(name, false);
 
                 self.expr(iter, ctx)?;
                 ctx.emit(Op::StoreLocal(arr_slot));
-                let zero = ctx.const_idx(Value::Int(0));
-                ctx.emit(Op::Const(zero));
+                ctx.emit(Op::None);
                 ctx.emit(Op::StoreLocal(i_slot));
 
                 let start = ctx.code.len();
-                ctx.emit(Op::LoadLocal(i_slot));
-                ctx.emit(Op::LoadLocal(arr_slot));
-                ctx.emit(Op::Len);
-                ctx.emit(Op::Lt);
-                let jf = ctx.emit(Op::JumpIfFalse(0));
-
-                ctx.emit(Op::LoadLocal(arr_slot));
-                ctx.emit(Op::LoadLocal(i_slot));
-                ctx.emit(Op::Index);
-                ctx.emit(Op::StoreLocal(x_slot));
+                let jf = ctx.emit(Op::IterNext(arr_slot, i_slot, x_slot, 0));
 
                 ctx.begin_scope();
                 ctx.break_stack.push(Vec::new());
@@ -315,11 +307,7 @@ impl Compiler {
                 ctx.end_scope();
 
                 let inc = ctx.code.len();
-                ctx.emit(Op::LoadLocal(i_slot));
-                let one = ctx.const_idx(Value::Int(1));
-                ctx.emit(Op::Const(one));
-                ctx.emit(Op::Add);
-                ctx.emit(Op::StoreLocal(i_slot));
+                ctx.emit(Op::IncrLocal(i_slot));
                 ctx.emit(Op::Loop(0));
                 ctx.patch_loop(ctx.code.len() - 1, start);
                 ctx.patch_jump(jf);

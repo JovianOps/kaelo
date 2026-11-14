@@ -132,6 +132,9 @@ pub enum Op {
     DefGlobal(u32),
     AppendLocal(u32),
     AppendGlobal(u32),
+    // fused for-loop step: length check + element fetch + store in one op
+    IterNext(u32, u32, u32, i32),
+    IncrLocal(u32),
     Add,
     Sub,
     Mul,
@@ -624,6 +627,52 @@ fn step(&mut self) -> R<Value> {
                     self.stack.push(v);
                     continue;
                 }
+                Op::IterNext(a_slot, i_slot, x_slot, off) => {
+                    let arr = self.stack.get(base + a_slot as usize).cloned().unwrap_or(Value::None);
+                    let i = self.stack.get(base + i_slot as usize).cloned().unwrap_or(Value::None);
+                    let items = match arr {
+                        Value::Array(a) => a,
+                        other => {
+                            return Err(RtError::new(format!(
+                                "for..in needs array or string, got {}",
+                                other.type_name()
+                            )))
+                        }
+                    };
+                    let n = match i {
+                        Value::Int(n) if n >= 0 => n as usize,
+                        _ => 0,
+                    };
+                    let len = items.items.borrow().len();
+                    if n >= len {
+                        ip = (ip as i32 + off) as usize;
+                        continue;
+                    }
+                    let v = items.items.borrow()[n].clone();
+                    let at = base + x_slot as usize;
+                    if at < self.stack.len() {
+                        self.stack[at] = v;
+                    } else {
+                        self.stack.push(v);
+                    }
+                    continue;
+                }
+                Op::IncrLocal(slot) => {
+                    let at = base + slot as usize;
+                    let cur = match self.stack.get(at) {
+                        Some(Value::Int(n)) => *n,
+                        _ => 0,
+                    };
+                    let next = cur
+                        .checked_add(1)
+                        .ok_or_else(|| RtError::new("integer overflow (checked arithmetic is on)"))?;
+                    if at < self.stack.len() {
+                        self.stack[at] = Value::Int(next);
+                    } else {
+                        self.stack.push(Value::Int(next));
+                    }
+                    continue;
+                }
                 Op::Jump(off) => {
                     ip = (ip as i32 + off) as usize;
                     continue;
@@ -643,6 +692,8 @@ fn step(&mut self) -> R<Value> {
             }
 
             match op {
+                // handled by the hot-path match above
+                Op::IterNext(..) | Op::IncrLocal(_) => {}
                 Op::Const(i) => {
                     let v = chunk.consts[i as usize].clone();
                     self.stack.push(v);

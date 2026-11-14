@@ -10,7 +10,7 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 | `strcat2` — 20k `s += "ab"` (compound append) | **1.7 ms** | 2.4 ms | **1.4x faster** |
 | `strcat` — 20k `s = s + "ab"` (allocating form) | 27.6 ms | 2.4 ms | 11x slower |
 | `fib` — recursive fib(25) | 24 ms | 14.7 ms | 1.63x slower |
-| `sum` — build a 200k array, then sum it | 48.0 ms | 20.7 ms | 2.32x slower |
+| `sum` — build a 200k array, then sum it | 30.0 ms | 20.7 ms | 1.45x slower |
 
 Both sides in the same session, best of 3. This machine's CPython moves 20-25%
 between sessions (787 ms to 596 ms for the same `loop` script), so ratios are only
@@ -53,6 +53,9 @@ Wins in this release, all measured:
   `grid` 114 -> 108 ms.
 - `x = v;` as a statement no longer re-pushes the value just to pop it (4 of the 17
   instructions in a loop body). `loop` 1130 -> 811 ms.
+- `for x in arr` compiles to one fused `IterNext` (length check + element fetch +
+  store) plus `IncrLocal`, instead of the desugared ~15 instructions per element:
+  `sum` 48 -> 30 ms.
 - The three hottest builtins (`len`, `push`, `pop`) carry a tag and are inlined in
   the `Call` arm instead of going through `Box<dyn Fn>` plus the argument buffer:
   `sum` 53 -> 48 ms. The fallback still calls the closure, and the inlined paths
