@@ -22,3 +22,8 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[dependencies]
+cranelift-codegen = "0.137.1"
+cranelift-frontend = "0.137.1"
+target-lexicon = "0.13.6"
