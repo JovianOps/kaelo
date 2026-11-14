@@ -290,6 +290,9 @@ pub fn compile(
                 st.push(builder.inst_results(call)[0]);
             }
             Op::Jump(off) => {
+                if !st.is_empty() {
+                    return None; // a value live across a control edge is not SSA
+                }
                 let t = (ip as i64 + 1 + *off as i64) as usize;
                 let target = *blocks.get(t)?;
                 builder.ins().jump(target, &[]);
@@ -300,6 +303,9 @@ pub fn compile(
                     Some(v) => v,
                     None => return None,
                 };
+                if !st.is_empty() {
+                    return None; // live value across the branch
+                }
                 let t = (ip as i64 + 1 + *off as i64) as usize;
                 let target = *blocks.get(t)?;
                 let fall = *blocks.get(ip + 1).unwrap_or(&done);
@@ -309,6 +315,9 @@ pub fn compile(
                 terminated = true;
             }
             Op::Loop(off) => {
+                if !st.is_empty() {
+                    return None;
+                }
                 let t = (ip as i64 + 1 + *off as i64) as usize;
                 let target = *blocks.get(t)?;
                 builder.ins().jump(target, &[]);
