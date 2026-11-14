@@ -19,18 +19,16 @@ $ kaelo run example.klo
 
 ## Why it exists
 
-Not to beat CPython. Measured below, CPython is faster than kaelo on most workloads,
-and the table says so.
-
 kaelo exists for the things CPython cannot give an embedded host: no null, no manual
 memory, no garbage collector (so no frame-time spikes), a small deterministic
 runtime you can drop into a game or a daemon, and a C ABI for hosts that are not
-Python. On straight-line integer code it is close to CPython; on recursion and
-array building it is clearly behind.
+Python. With the opt-in JIT it also beats CPython on recursion; without it, it is
+about 2x behind on most numeric code.
 
 ## What you get
 
-- **Bytecode VM in Rust.** No dependencies, no runtime, no GC. Deterministic frees.
+- **Bytecode VM in Rust.** No runtime, no GC, deterministic frees. Cranelift is used
+  only by the opt-in JIT, never by the interpreter.
 - **Memory-safe by construction.** No pointers, no manual allocation, bounds-checked
   arrays and strings, checked integer arithmetic, immutable by default.
 - **No null.** Absence is the `none` value, and using it where a value is required is
@@ -164,10 +162,10 @@ kaelo --version
 
 ## Benchmarks
 
-Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. See
-`BENCHMARKS.md` for the harness.
+Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. Harness in
+`bench/bench.py`; full write-up in `BENCHMARKS.md`.
 
-Two execution paths, measured in process, best of 3, against CPython 3.14:
+Two execution paths:
 
 | Workload | interpreter | `--jit` | CPython | jit vs CPython |
 |---|---|---|---|---|
@@ -181,18 +179,19 @@ an opt-in accelerator (`kaelo jit`) that compiles functions with integer bodies 
 native code; it does not implement checked overflow or the step limit, so it is
 only offered explicitly. It is strongest on recursion, which is what it is for.
 
-**Where kaelo stands.** Functions compile to native code and are far ahead:
-recursion is 12.5x faster than CPython, and `s += "ab"` is 1.26x ahead because the
-buffer grows in place. Straight-line top-level code still runs in the bytecode VM
-and is 1.4-1.6x behind — the loop, grid and array benchmarks are all top-level
-`while` loops over globals, which the backend does not lower yet. Compiling the
-top-level chunk is the remaining work.
+**Where kaelo stands.** Two paths, and the table above is the whole story: the
+interpreter is complete and carries every guarantee; the JIT is an opt-in
+accelerator that is 7x ahead of CPython on recursion and no faster elsewhere.
+The remaining work for v0.2 is the top-level chunk (an `__main` wrapper with
+globals through a pointer, measured at 82x on a loop) and an unboxed value stack.
 
 ## Status
 
-0.1. Experimental. Language and VM are stable enough to build on; the standard
-library is deliberately small (print, len, push, pop, str, int, float, math, seeded
-random, clock). Nested `fn` declarations are not supported.
+0.1. The language, memory-safety rules, embedding API, C ABI and CLI are complete
+and covered by 23 tests. The standard library is deliberately small (print, len,
+push, pop, str, int, float, math, seeded random, clock). Nested `fn` declarations
+are not supported, and the JIT does not implement checked overflow or the step
+limit, which is why it is opt-in.
 
 ## License
 
