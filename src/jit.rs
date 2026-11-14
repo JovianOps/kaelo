@@ -24,10 +24,12 @@ pub struct JitCode {
 }
 
 impl JitCode {
-    /// Call with `n` i64 arguments; returns the first result.
-    pub unsafe fn call(&self, args: &[i64]) -> i64 {
-        let f: extern "C" fn(usize, *const i64) -> i64 = std::mem::transmute(self.ptr);
-        f(args.len(), args.as_ptr())
+    /// Call with `n` i64 arguments; `fns` is the call table (one slot per
+    // global id). Returns the first result.
+    pub unsafe fn call(&self, args: &[i64], fns: *const *const u8) -> i64 {
+        let f: extern "C" fn(usize, *const i64, *const *const u8) -> i64 =
+            std::mem::transmute(self.ptr);
+        f(args.len(), args.as_ptr(), fns)
     }
 }
 
@@ -59,7 +61,11 @@ type V = cranelift_codegen::ir::Value;
 
 /// Compile `chunk` as `fn(argc: i64, argv: *const i64) -> i64`.
 /// Returns None when the chunk uses anything this backend does not support.
-pub fn compile(chunk: &Chunk, n_params: usize) -> Option<JitCode> {
+pub fn compile(
+    chunk: &Chunk,
+    n_params: usize,
+    fn_gids: &std::collections::HashSet<u32>,
+) -> Option<JitCode> {
     for c in &chunk.consts {
         match c {
             Value::Int(_) => {}
@@ -72,6 +78,7 @@ pub fn compile(chunk: &Chunk, n_params: usize) -> Option<JitCode> {
     let mut sig = Signature::new(isa.default_call_conv());
     sig.params.push(AbiParam::new(types::I64)); // argc
     sig.params.push(AbiParam::new(types::I64)); // argv
+    sig.params.push(AbiParam::new(types::I64)); // call table: *const *const u8
     sig.returns.push(AbiParam::new(types::I64));
     ctx.func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
 
@@ -98,6 +105,7 @@ pub fn compile(chunk: &Chunk, n_params: usize) -> Option<JitCode> {
     let entry = builder.create_block();
     builder.append_block_params_for_function_params(entry);
     let argv_v = builder.block_params(entry)[1];
+    let table_v = builder.block_params(entry)[2];
 
     let vars: Vec<Variable> = (0..n_locals).map(|_| builder.declare_var(types::I64)).collect();
 
@@ -128,6 +136,15 @@ pub fn compile(chunk: &Chunk, n_params: usize) -> Option<JitCode> {
 
     let mut st: Vec<V> = Vec::new();
     let mut result: Option<V> = None;
+    let mut last_global: Option<u32> = None;
+    let callee_sig = builder.import_signature({
+        let mut s = Signature::new(isa.default_call_conv());
+        s.params.push(AbiParam::new(types::I64)); // argc
+        s.params.push(AbiParam::new(types::I64)); // argv
+        s.params.push(AbiParam::new(types::I64)); // call table
+        s.returns.push(AbiParam::new(types::I64));
+        s
+    });
 
     for (ip, op) in code.iter().enumerate() {
         builder.switch_to_block(blocks[ip]);
@@ -185,6 +202,40 @@ pub fn compile(chunk: &Chunk, n_params: usize) -> Option<JitCode> {
                     _ => return None,
                 };
                 st.push(v);
+            }
+            Op::LoadGlobal(g) => {
+                // only allowed in callee position: args, LoadGlobal, Call
+                if !matches!(code.get(ip + 1), Some(Op::Call(_))) {
+                    return None; // a real global read: not lowered yet
+                }
+                last_global = Some(*g);
+                st.push(builder.ins().iconst(types::I64, 0)); // callee slot
+            }
+            Op::Call(argc) => {
+                let gid = last_global?;
+                if !fn_gids.contains(&gid) {
+                    return None; // callee is not a function: not compilable
+                }
+                let idx = gid as i64;
+                let argc = *argc as usize;
+                // args are on the stack above the callee slot; the compiler emits
+                // args then LoadGlobal, so drop nothing and take the top argc
+                let mut argv_vals: Vec<V> = Vec::with_capacity(argc);
+                for _ in 0..argc {
+                    argv_vals.push(st.pop()?);
+                }
+                argv_vals.reverse();
+                // the callee value sits below the args: drop it
+                if st.pop().is_none() {
+                    return None;
+                }
+                let addr = builder.ins().iadd_imm(table_v, idx * 8);
+                let fp = builder.ins().load(types::I64, MemFlagsData::new(), addr, 0);
+                let argc_v = builder.ins().iconst(types::I64, argc as i64);
+                let mut args: Vec<V> = vec![argc_v];
+                args.extend(argv_vals);
+                let call = builder.ins().call_indirect(callee_sig, fp, &args);
+                st.push(builder.inst_results(call)[0]);
             }
             Op::Jump(off) => {
                 let t = (ip as i64 + 1 + *off as i64) as usize;

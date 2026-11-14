@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Write;
 use std::rc::Rc;
@@ -258,9 +258,8 @@ pub struct Vm {
     /// scratch for native calls, reused so a hot loop of push()/len() does not
     /// allocate a Vec per call
     args_buf: Vec<Value>,
-    /// compiled functions, keyed by the FuncObj's chunk address:
-    /// None = tried and not compilable yet
-    jit: std::collections::HashMap<usize, Option<Rc<crate::jit::JitCode>>>,
+    /// call table for JIT'd code: one `*const u8` per global id
+    pub jit_table: Vec<*const u8>,
 }
 
 const MAX_STEPS: u64 = 200_000_000;
@@ -280,7 +279,7 @@ impl Vm {
             structs: HashMap::new(),
             main: None,
             args_buf: Vec::with_capacity(8),
-            jit: std::collections::HashMap::new(),
+            jit_table: Vec::new(),
         };
         vm.install_builtins();
         vm
@@ -313,6 +312,30 @@ impl Vm {
 
     pub fn set_seed(&mut self, seed: i64) {
         self.rng = (seed as u64) | 1;
+    }
+
+    /// global ids that hold a function
+    pub fn fn_gids(&self) -> HashSet<u32> {
+        let mut out = HashSet::new();
+        for (i, v) in self.globals.iter().enumerate() {
+            if matches!(v, Value::Func(_)) {
+                out.insert(i as u32);
+            }
+        }
+        out
+    }
+
+    /// fill the call table with every compiled function pointer
+    pub fn rebuild_jit_table(&mut self) {
+        self.jit_table.clear();
+        self.jit_table.resize(self.globals.len(), std::ptr::null());
+        for (i, v) in self.globals.iter().enumerate() {
+            if let Value::Func(f) = v {
+                if let Some(c) = f.jit.borrow().clone().flatten() {
+                    self.jit_table[i] = c.ptr;
+                }
+            }
+        }
     }
 
     pub fn set_main(&mut self, chunk: Rc<Chunk>) {
@@ -1047,9 +1070,12 @@ fn step(&mut self) -> R<Value> {
                             let code_opt: Option<Rc<crate::jit::JitCode>> = match cached {
                                 Some(c) => c,
                                 None => {
-                                    let c = crate::jit::compile(&f.chunk, argc);
+                                    let c = crate::jit::compile(&f.chunk, argc, &self.fn_gids());
                                     let rc = c.map(Rc::new);
                                     *f.jit.borrow_mut() = Some(rc.clone());
+                                    // the new pointer must be visible to anything
+                                    // that calls it, including itself
+                                    self.rebuild_jit_table();
                                     rc
                                 }
                             };
@@ -1068,7 +1094,9 @@ fn step(&mut self) -> R<Value> {
                                     for _ in 0..argc {
                                         self.stack.pop();
                                     }
-                                    let out = unsafe { code.call(&argv) };
+                                    let out = unsafe {
+                                        code.call(&argv, self.jit_table.as_ptr())
+                                    };
                                     self.stack.push(Value::Int(out));
                                     continue;
                                 }
