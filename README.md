@@ -1,6 +1,6 @@
 # kaelo
 
-A small, fast, memory-safe language you can embed in a game or a tool.
+A small, memory-safe language you can embed in a game or a tool.
 
 ```rust
 var i = 0;
@@ -19,9 +19,14 @@ $ kaelo run example.klo
 
 ## Why it exists
 
-Python is quick to write and slow to run. Games and tools need something that keeps
-the readable surface but doesn't stall: no null, no manual memory, no garbage
-collector pauses, and a predictable per-frame cost.
+Not to beat CPython. Measured below, CPython is faster than kaelo on most workloads,
+and the table says so.
+
+kaelo exists for the things CPython cannot give an embedded host: no null, no manual
+memory, no garbage collector (so no frame-time spikes), a small deterministic
+runtime you can drop into a game or a daemon, and a C ABI for hosts that are not
+Python. On straight-line integer code it is close to CPython; on recursion and
+array building it is clearly behind.
 
 ## What you get
 
