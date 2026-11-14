@@ -243,6 +243,9 @@ pub struct Vm {
     rng: u64,
     pub structs: HashMap<String, Vec<String>>,
     main: Option<Rc<Chunk>>,
+    /// scratch for native calls, reused so a hot loop of push()/len() does not
+    /// allocate a Vec per call
+    args_buf: Vec<Value>,
 }
 
 const MAX_STEPS: u64 = 200_000_000;
@@ -261,6 +264,7 @@ impl Vm {
             rng: 0x2545F4914F6CDD1D,
             structs: HashMap::new(),
             main: None,
+            args_buf: Vec::with_capacity(8),
         };
         vm.install_builtins();
         vm
@@ -896,9 +900,14 @@ fn step(&mut self) -> R<Value> {
                     };
                     match callee {
                         Value::Native(n) => {
-                            let args: Vec<Value> = self.stack.split_off(self.stack.len().saturating_sub(argc));
-                            let v = (n.0)(self, &args)?;
-                            self.stack.push(v);
+                            let start = self.stack.len().saturating_sub(argc);
+                            self.args_buf.clear();
+                            self.args_buf.extend_from_slice(&self.stack[start..]);
+                            self.stack.truncate(start);
+                            let mut buf = std::mem::take(&mut self.args_buf);
+                            let v = (n.0)(self, &buf);
+                            self.args_buf = buf;
+                            self.stack.push(v?);
                         }
                         Value::Func(f) => {
                             if argc != f.n_params as usize {

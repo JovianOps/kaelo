@@ -5,17 +5,17 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 866 ms | 763 ms | 1.13x slower |
-| `grid` — 1000x1000 nested loop with `total = total + x * y` | 114 ms | 85 ms | 1.33x slower |
-| `strcat2` — 20k `s += "ab"` (compound append) | **1.8 ms** | 2.4 ms | **1.3x faster** |
-| `strcat` — 20k `s = s + "ab"` (allocating form) | 26 ms | 2.9 ms | 9x slower |
-| `fib` — recursive fib(25) | 26.7 ms | 15.6 ms | 1.7x slower |
-| `sum` — build a 200k array, then sum it | 69.4 ms | 23.6 ms | 2.9x slower |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 811 ms | 596 ms | 1.36x slower |
+| `grid` — 1000x1000 nested loop with `total = total + x * y` | 108 ms | 71 ms | 1.52x slower |
+| `strcat2` — 20k `s += "ab"` (compound append) | **1.9 ms** | 2.4 ms | **1.3x faster** |
+| `strcat` — 20k `s = s + "ab"` (allocating form) | 26 ms | 2.4 ms | 11x slower |
+| `fib` — recursive fib(25) | 23.9 ms | 14.8 ms | 1.61x slower |
+| `sum` — build a 200k array, then sum it | 51.0 ms | 23.3 ms | 2.19x slower |
 
-Both sides measured in the same session, best of 3. This machine's CPython moves
-about 20% between sessions (628 ms vs 763 ms for the same `loop` script), so the
-ratios are only trustworthy when both sides are timed together — always re-run
-`python bench/bench.py` alongside the kaelo runs.
+Both sides in the same session, best of 3. This machine's CPython moves 20-25%
+between sessions (596 ms to 763 ms for the same `loop` script), so ratios are only
+trustworthy when both sides are timed together: run `python bench/bench.py` in the
+same session as the kaelo runs.
 
 Run them:
 
@@ -45,10 +45,14 @@ Measured cost: about 15 ns per executed instruction on the `loop` case, against
 about 8.5 ns for CPython's specialised interpreter. CPython 3.14 has inline caches
 and adaptive specialisation.
 
-Two wins in this release, both measured:
+Wins in this release, all measured:
 
+- Native calls no longer allocate. `Op::Call` did `stack.split_off(..)` for the
+  argument vector, so every `push()`/`len()` in a loop allocated a fresh Vec. A
+  reusable scratch buffer takes that to zero allocations: `sum` 69 -> 51 ms,
+  `grid` 114 -> 108 ms.
 - `x = v;` as a statement no longer re-pushes the value just to pop it (4 of the 17
-  instructions in a loop body). `loop` 1130 -> 866 ms.
+  instructions in a loop body). `loop` 1130 -> 811 ms.
 - Caching the current `Chunk` in a local (one `Rc` clone per frame switch instead of
 an `Rc` deref plus a `Vec` index on every instruction fetch) and keeping `ip`/`base`
 in locals rather than writing `ip` back to the frames `Vec` each instruction took
