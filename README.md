@@ -67,6 +67,7 @@ v.x = 6;                        // field assignment
 
 var items = [1, 2, 3];          // arrays
 push(items, 4);
+score += 5;                     // compound append (grow in place)
 for n in items {
     print(str(n));
 }
@@ -139,17 +140,19 @@ Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. See
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| 10M-iteration integer loop | 1514 ms | 567 ms | 2.7x slower |
-| 1000x1000 nested loop | 142 ms | 67 ms | 2.1x slower |
-| 20k string concatenations | 40 ms | 2.3 ms | 17x slower |
-| recursive fib(25) | 24.6 ms | 14.2 ms | 1.7x slower |
-| build + sum a 200k array | 63.5 ms | 22.8 ms | 2.8x slower |
+| 10M-iteration integer loop | 1431 ms | 614 ms | 2.3x slower |
+| 1000x1000 nested loop | 129 ms | 72 ms | 1.8x slower |
+| 20k `s += "ab"` appends | **2.0 ms** | 2.3 ms | **faster** |
+| 20k `s = s + "ab"` appends | 32 ms | 2.3 ms | 13x slower |
+| recursive fib(25) | 26.6 ms | 14.9 ms | 1.8x slower |
+| build + sum a 200k array | 65.5 ms | 20.9 ms | 3.1x slower |
 
-**kaelo 0.1 is not faster than CPython yet.** It is a switch-dispatch bytecode VM
-with a 24-byte tagged value; CPython 3.14 has inline caches and adaptive
-specialisation, and beats it on every workload above. The path to parity is
-superinstructions and an unboxed value stack, then a JIT — none of which are in
-0.1. The language surface and the memory-safety rules are done; the speed is not.
+**kaelo is not uniformly faster than CPython.** It wins on string building with
+`+=` (the buffer grows in place) and loses on integer-heavy loops and recursion,
+where CPython 3.14's inline caches and adaptive specialisation still win. `+=` is
+the fast path; `s = s + "x"` allocates every iteration, exactly as CPython does
+when the left side has more than one reference. The remaining gap is the VM core —
+superinstructions and an unboxed value stack, then a JIT. None of that is in 0.1.
 
 ## Status
 

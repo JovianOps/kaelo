@@ -123,6 +123,8 @@ pub enum Op {
     StoreGlobal(u32),
     StoreGlobalConst(u32),
     DefGlobal(u32),
+    AppendLocal(u32),
+    AppendGlobal(u32),
     Add,
     Sub,
     Mul,
@@ -193,6 +195,40 @@ fn int_binop(op: Op, x: i64, y: i64) -> R<Value> {
         _ => return Err(RtError::new("bad opcode")),
     };
     Ok(Value::Int(v))
+}
+
+/// Append rhs into slot, growing the buffer in place when we hold the only
+/// reference. This is what makes `s += "ab"` in a loop linear instead of O(n^2).
+fn append_into(slot: &mut Value, rhs: &Value) -> R<()> {
+    match (slot, rhs) {
+        (Value::Str(buf), Value::Str(other)) => {
+            if let Some(b) = Rc::get_mut(buf) {
+                b.push_str(other);
+            } else {
+                *buf = Rc::new(format!("{}{}", buf, other));
+            }
+            Ok(())
+        }
+        (Value::Int(a), Value::Int(b)) => match a.checked_add(*b) {
+            Some(v) => {
+                *a = v;
+                Ok(())
+            }
+            None => Err(RtError::new("integer overflow (checked arithmetic is on)")),
+        },
+        (Value::Float(a), Value::Float(b)) => {
+            *a += *b;
+            Ok(())
+        }
+        (Value::Str(_), other) => Err(RtError::new(format!(
+            "cannot append {} to string",
+            other.type_name()
+        ))),
+        (other, _) => Err(RtError::new(format!(
+            "cannot append to {}",
+            other.type_name()
+        ))),
+    }
 }
 
 pub struct Vm {
@@ -269,7 +305,7 @@ impl Vm {
         let remap = self.remap_for(&chunk.names);
         for op in chunk.code.iter_mut() {
             match op {
-                Op::LoadGlobal(id) | Op::StoreGlobal(id) | Op::StoreGlobalConst(id) | Op::DefGlobal(id) => {
+                Op::LoadGlobal(id) | Op::StoreGlobal(id) | Op::StoreGlobalConst(id) | Op::DefGlobal(id) | Op::AppendGlobal(id) => {
                     *id = remap[*id as usize];
                 }
                 _ => {}
@@ -578,6 +614,39 @@ fn step(&mut self) -> R<Value> {
                     self.ensure_global(id);
                     self.globals[id] = v;
                     self.global_kind[id] = 2;
+                }
+                Op::AppendLocal(slot) => {
+                    let rhs = self.stack.pop().unwrap_or(Value::None);
+                    let at = base + slot as usize;
+                    let mut slot_value = if at < self.stack.len() {
+                        std::mem::replace(&mut self.stack[at], Value::None)
+                    } else {
+                        Value::None
+                    };
+                    append_into(&mut slot_value, &rhs)?;
+                    self.stack[at] = slot_value.clone();
+                    self.stack.push(slot_value);
+                }
+                Op::AppendGlobal(id) => {
+                    let rhs = self.stack.pop().unwrap_or(Value::None);
+                    let id = id as usize;
+                    self.ensure_global(id);
+                    if self.global_kind[id] == 0 {
+                        return Err(RtError::new(format!(
+                            "undefined variable '{}'",
+                            self.global_names.get(id).cloned().unwrap_or_else(|| Rc::from("?"))
+                        )));
+                    }
+                    if self.global_kind[id] == 1 {
+                        return Err(RtError::new(format!(
+                            "cannot assign to '{}': declared with let (use var)",
+                            self.global_names.get(id).cloned().unwrap_or_else(|| Rc::from("?"))
+                        )));
+                    }
+                    let mut slot_value = std::mem::replace(&mut self.globals[id], Value::None);
+                    append_into(&mut slot_value, &rhs)?;
+                    self.globals[id] = slot_value.clone();
+                    self.stack.push(slot_value);
                 }
                 Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Eq | Op::Ne | Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let b = self.stack.pop().unwrap_or(Value::None);

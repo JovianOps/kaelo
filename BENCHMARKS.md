@@ -5,11 +5,12 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1490 ms | 688 ms | 2.2× slower |
-| `grid` — 1000×1000 nested loop with `total = total + x * y` | 132 ms | 83 ms | 1.6× slower |
-| `strcat` — 20k `s = s + "ab"` | 37 ms | 2.4 ms | 15× slower |
-| `fib` — recursive fib(25) | 25.6 ms | 14.4 ms | 1.8× slower |
-| `sum` — build a 200k array, then sum it | 66.2 ms | 21.9 ms | 3.0× slower |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1431 ms | 614 ms | 2.3× slower |
+| `grid` — 1000×1000 nested loop with `total = total + x * y` | 129 ms | 72 ms | 1.8× slower |
+| `strcat2` — 20k `s += "ab"` (compound append) | **2.0 ms** | 2.3 ms | **1.1x faster** |
+| `strcat` — 20k `s = s + "ab"` (allocating form) | 32 ms | 2.3 ms | 13× slower |
+| `fib` — recursive fib(25) | 26.6 ms | 14.9 ms | 1.8× slower |
+| `sum` — build a 200k array, then sum it | 65.5 ms | 20.9 ms | 3.1× slower |
 
 Run them:
 
@@ -21,15 +22,18 @@ sh examples/bench_all.sh    # kaelo side
 
 ## Where this stands
 
-kaelo 0.1 is **not faster than CPython 3.14**. It is 1.6–3.0x slower across a
-representative mix, and far slower on repeated string concatenation.
+kaelo 0.1 is **faster than CPython 3.14 on one workload and slower on the rest**.
+It wins string building with `+=` (2.0 ms vs 2.3 ms) and is 1.8–3.1x slower on
+integer loops, nested loops, recursion and array building.
 
-Strings are now `Rc<String>` so a uniquely-owned buffer can be appended in place
-instead of reallocated. That helped the `strcat` case only marginally (40 ms ->
-37 ms): in `s = s + "ab"` the left operand is a second reference held by the
-stack, so the in-place path is not reached. CPython wins that case by reusing the
-buffer when the string's refcount is 1. A compound-append operator that moves the
-slot value out before growing it would fix it; not in 0.1.
+`s += "ab"` is the fast path: the `+=` operator moves the slot value out before
+growing it, so the buffer is uniquely owned and grows in place — 20k appends in
+2.0 ms, faster than CPython. `s = s + "ab"` still allocates every iteration
+(32 ms) because the stack holds a second reference to the left operand, which is
+the same reason CPython falls back to allocation there.
+
+With that fixed, the remaining gap is entirely in the VM core: integer-heavy loops
+and recursion, where CPython's inline caches and adaptive specialisation win.
 
 Measured cost: about 15 ns per executed instruction on the `loop` case, against
 about 8.5 ns for CPython's specialised interpreter. A switch-dispatch VM with a

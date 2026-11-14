@@ -149,3 +149,31 @@ fn deterministic_random() {
     let c = run("seed(7); rand_int(0, 100);");
     assert_ne!(a.render(), c.render());
 }
+#[test]
+fn compound_append_strings() {
+    let mut e = Engine::new();
+    // grow a string in a loop: linear time, not quadratic
+    let v = e
+        .run("var s = \"\"; var i = 0; while i < 20000 { s += \"ab\"; i = i + 1; } len(s);")
+        .expect("append loop");
+    assert_eq!(int(v), 40000);
+}
+
+#[test]
+fn compound_append_ints_and_floats() {
+    assert_eq!(int(run("var n = 1; n += 2; n += 3; n;")), 6);
+    let v = run("var f = 1.5; f += 2.5; f;");
+    assert!(matches!(v, Value::Float(x) if x == 4.0));
+}
+
+#[test]
+fn compound_append_rejects_immutable() {
+    let e = run_err("let s = \"a\"; s += \"b\";");
+    assert!(e.contains("cannot assign"), "got: {}", e);
+}
+
+#[test]
+fn compound_append_rejects_bad_types() {
+    let e = run_err("var s = \"a\"; s += 1;");
+    assert!(e.contains("cannot append"), "got: {}", e);
+}

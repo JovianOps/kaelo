@@ -38,10 +38,21 @@ def grid():
 
 
 def strcat():
+    # `s = s + "ab"` form: kaelo allocates each time, CPython reuses the buffer
     s = ""
     i = 0
     while i < 20_000:
         s = s + "ab"
+        i = i + 1
+    return len(s)
+
+
+def strcat2():
+    # `s += "ab"` form: kaelo grows the buffer in place
+    s = ""
+    i = 0
+    while i < 20_000:
+        s += "ab"
         i = i + 1
     return len(s)
 
@@ -67,7 +78,7 @@ def arrays():
 
 
 CASES = [("loop", loop, 1), ("grid", grid, 3), ("strcat", strcat, 3),
-         ("fib", fib25, 3), ("sum", arrays, 3)]
+         ("strcat2", strcat2, 3), ("fib", fib25, 3), ("sum", arrays, 3)]
 
 if __name__ == "__main__":
     for name, fn, n in CASES:

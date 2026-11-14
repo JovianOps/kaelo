@@ -179,7 +179,10 @@ impl<'a> Lexer<'a> {
         }
 
         let tok = match c {
-            b'+' => { self.bump(); Tok::Plus }
+            b'+' => {
+                self.bump();
+                if self.peek() == b'=' { self.bump(); Tok::PlusEq } else { Tok::Plus }
+            }
             b'-' => {
                 self.bump();
                 if self.peek() == b'>' { self.bump(); Tok::Arrow } else { Tok::Minus }

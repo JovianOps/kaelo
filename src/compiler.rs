@@ -333,6 +333,22 @@ impl Compiler {
                 }
                 Ok(())
             }
+            Stmt::Append { name, value } => {
+                if let Some(slot) = ctx.resolve_local(name) {
+                    if !ctx.local_is_mutable(name) {
+                        return Err(format!("cannot assign to '{}': declared with let (use var)", name));
+                    }
+                    self.expr(value, ctx)?;
+                    ctx.emit(Op::AppendLocal(slot));
+                    ctx.emit(Op::Pop); // statement form: drop the result
+                } else {
+                    let gid = self.name_id(name);
+                    self.expr(value, ctx)?;
+                    ctx.emit(Op::AppendGlobal(gid));
+                    ctx.emit(Op::Pop); // statement form: drop the result
+                }
+                Ok(())
+            }
             Stmt::Break => {
                 let at = ctx.emit(Op::Jump(0));
                 if let Some(list) = ctx.break_stack.last_mut() {

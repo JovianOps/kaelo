@@ -179,8 +179,15 @@ impl Parser {
                 Ok(Stmt::Continue)
             }
             _ => {
-                // plain name assignment: x = expr;
+                // compound append: name += expr;
                 if let Tok::Ident(name) = self.peek().clone() {
+                    if *self.at(1) == Tok::PlusEq {
+                        self.bump();
+                        self.bump();
+                        let value = self.expression()?;
+                        self.expect(Tok::Semicolon)?;
+                        return Ok(Stmt::Append { name, value });
+                    }
                     if *self.at(1) == Tok::Assign {
                         self.bump();
                         self.bump();

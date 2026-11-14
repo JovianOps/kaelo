@@ -58,6 +58,7 @@ pub enum Stmt {
     Break,
     Continue,
     Expr(Expr),
+    Append { name: String, value: Expr },
 }
 
 #[derive(Debug, Clone)]

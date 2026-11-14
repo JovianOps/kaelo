@@ -24,6 +24,7 @@ pub enum Tok {
     Struct,
     // symbols
     Plus,
+    PlusEq,
     Minus,
     Star,
     Slash,
