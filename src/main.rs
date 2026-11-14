@@ -35,13 +35,38 @@ fn main() {
                 }
             };
             let t = Instant::now();
-            match kaelo::Engine::new().run(&src) {
+            let mut e = kaelo::Engine::new();
+            if args.iter().any(|a| a == "--jit") {
+                e.vm.jit_enabled = true;
+            }
+            match e.run(&src) {
                 Ok(_) => {
                     let ms = t.elapsed().as_secs_f64() * 1000.0;
                     eprintln!("[{:.3} ms]", ms);
                 }
                 Err(e) => {
                     eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        "jit" => {
+            // explicit opt-in: compile functions to native code and run
+            if args.len() < 2 {
+                eprintln!("usage: kaelo jit <file.klo>");
+                std::process::exit(1);
+            }
+            let src = std::fs::read_to_string(&args[1]).expect("read file");
+            let mut e = kaelo::Engine::new();
+            e.vm.jit_enabled = true;
+            let t0 = Instant::now();
+            match e.run(&src) {
+                Ok(_) => {
+                    let ms = t0.elapsed().as_secs_f64() * 1000.0;
+                    eprintln!("[{:.3} ms]", ms);
+                }
+                Err(er) => {
+                    eprintln!("error: {}", er);
                     std::process::exit(1);
                 }
             }
@@ -93,7 +118,8 @@ fn main() {
 
 fn usage() {
     println!(
-        "kaelo {}\n\nUSAGE:\n  kaelo run <file.klo>       run a program\n  kaelo eval <code>          run code directly\n  kaelo bench <file.klo>     time a program (best of 3)\n  kaelo --version            print version",
+        "kaelo {}\n\nUSAGE:\n  kaelo run <file.klo>       run a program\n  kaelo eval <code>          run code directly\n  kaelo jit <file.klo>       run with the native-code JIT (experimental)
+  kaelo bench <file.klo>     time a program (best of 3)\n  kaelo --version            print version",
         env!("CARGO_PKG_VERSION")
     );
 }

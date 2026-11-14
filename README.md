@@ -155,7 +155,8 @@ logic in 0.5 ms).
 ## CLI
 
 ```
-kaelo run <file.klo>       run a program
+kaelo run <file.klo>       run a program (interpreter)
+kaelo jit <file.klo>       run with the native-code JIT (opt-in)
 kaelo eval <code>          run code directly
 kaelo bench <file.klo>     time a program (best of 3)
 kaelo --version
@@ -166,13 +167,19 @@ kaelo --version
 Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. See
 `BENCHMARKS.md` for the harness.
 
-| Workload | kaelo | CPython 3.14 | ratio |
-|---|---|---|---|
-| recursive fib(25) | **1.2 ms** | 15.0 ms | **12.5x faster** |
-| 20k `s += "ab"` appends | **1.9 ms** | 2.4 ms | **1.26x faster** |
-| 10M-iteration integer loop (top level) | 955 ms | 587 ms | 1.63x slower |
-| 1000x1000 nested loop (top level) | 103 ms | 71 ms | 1.45x slower |
-| build + sum a 200k array (top level) | 33 ms | 21 ms | 1.55x slower |
+Two execution paths, measured in process, best of 3, against CPython 3.14:
+
+| Workload | interpreter | `--jit` | CPython | jit vs CPython |
+|---|---|---|---|---|
+| recursive fib(25) | 33 ms | **2.1 ms** | 15.0 ms | **7x faster** |
+| 10M-iteration integer loop | 1189 ms | 1127 ms | 587 ms | 1.9x slower |
+| 1000x1000 nested loop | 134 ms | 152 ms | 71 ms | 2.1x slower |
+| build + sum a 200k array | 37 ms | 41 ms | 21 ms | 2.0x slower |
+
+The interpreter is the default because it implements every guarantee. The JIT is
+an opt-in accelerator (`kaelo jit`) that compiles functions with integer bodies to
+native code; it does not implement checked overflow or the step limit, so it is
+only offered explicitly. It is strongest on recursion, which is what it is for.
 
 **Where kaelo stands.** Functions compile to native code and are far ahead:
 recursion is 12.5x faster than CPython, and `s += "ab"` is 1.26x ahead because the

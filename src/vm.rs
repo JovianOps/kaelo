@@ -260,6 +260,10 @@ pub struct Vm {
     args_buf: Vec<Value>,
     /// call table for JIT'd code: one `*const u8` per global id
     pub jit_table: Vec<*const u8>,
+    /// Opt-in. When false every program runs in the interpreter, which
+    /// implements every guarantee (checked arithmetic, step limit, clear errors).
+    /// The JIT is an accelerator for numeric code and does not cover those.
+    pub jit_enabled: bool,
 }
 
 const MAX_STEPS: u64 = 200_000_000;
@@ -280,6 +284,7 @@ impl Vm {
             main: None,
             args_buf: Vec::with_capacity(8),
             jit_table: Vec::new(),
+            jit_enabled: false,
         };
         vm.install_builtins();
         vm
@@ -1067,17 +1072,21 @@ fn step(&mut self) -> R<Value> {
                             // compilable; Some(Some(code)) = compiled
                             let cached: Option<Option<Rc<crate::jit::JitCode>>> =
                                 f.jit.borrow().clone();
-                            let code_opt: Option<Rc<crate::jit::JitCode>> = match cached {
-                                Some(c) => c,
-                                None => {
-                                    let c = crate::jit::compile(&f.chunk, argc, &self.fn_gids());
-                                    let rc = c.map(Rc::new);
-                                    *f.jit.borrow_mut() = Some(rc.clone());
-                                    // the new pointer must be visible to anything
-                                    // that calls it, including itself
-                                    self.rebuild_jit_table();
-                                    rc
+                            let code_opt: Option<Rc<crate::jit::JitCode>> = if self.jit_enabled {
+                                match cached {
+                                    Some(c) => c,
+                                    None => {
+                                        let c = crate::jit::compile(&f.chunk, argc, &self.fn_gids());
+                                        let rc = c.map(Rc::new);
+                                        *f.jit.borrow_mut() = Some(rc.clone());
+                                        // the new pointer must be visible to anything
+                                        // that calls it, including itself
+                                        self.rebuild_jit_table();
+                                        rc
+                                    }
                                 }
+                            } else {
+                                None
                             };
                             if let Some(code) = code_opt {
                                 if argc == f.n_params as usize
