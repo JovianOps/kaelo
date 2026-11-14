@@ -173,7 +173,7 @@ Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. See
 | 20k `s += "ab"` appends | **1.7 ms** | 2.4 ms | **1.4x faster** |
 | 20k `s = s + "ab"` appends | 27.6 ms | 3.2 ms | 8.6x slower |
 | recursive fib(25) | 23.4 ms | 15.4 ms | 1.5x slower |
-| build + sum a 200k array | 30.0 ms | 20.7 ms | 1.45x slower |
+| build + sum a 200k array | 31.0 ms | 20.1 ms | 1.54x slower |
 
 **kaelo is not uniformly faster than CPython.** It wins on string building with
 `+=` (the buffer grows in place) and loses on integer-heavy loops and recursion,

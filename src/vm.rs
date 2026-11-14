@@ -627,6 +627,25 @@ fn step(&mut self) -> R<Value> {
                     self.stack.push(v);
                     continue;
                 }
+                Op::Jump(off) => {
+                    ip = (ip as i32 + off) as usize;
+                    continue;
+                }
+                Op::JumpIfFalse(off) => {
+                    let a = self.stack.pop().unwrap_or(Value::None);
+                    if !a.truthy()? {
+                        ip = (ip as i32 + off) as usize;
+                    }
+                    continue;
+                }
+                Op::Loop(off) => {
+                    ip = (ip as i32 + off) as usize;
+                    continue;
+                }
+                _ => {}
+            }
+
+            match op {
                 Op::IterNext(a_slot, i_slot, x_slot, off) => {
                     let arr = self.stack.get(base + a_slot as usize).cloned().unwrap_or(Value::None);
                     let i = self.stack.get(base + i_slot as usize).cloned().unwrap_or(Value::None);
@@ -673,27 +692,7 @@ fn step(&mut self) -> R<Value> {
                     }
                     continue;
                 }
-                Op::Jump(off) => {
-                    ip = (ip as i32 + off) as usize;
-                    continue;
-                }
-                Op::JumpIfFalse(off) => {
-                    let a = self.stack.pop().unwrap_or(Value::None);
-                    if !a.truthy()? {
-                        ip = (ip as i32 + off) as usize;
-                    }
-                    continue;
-                }
-                Op::Loop(off) => {
-                    ip = (ip as i32 + off) as usize;
-                    continue;
-                }
-                _ => {}
-            }
-
-            match op {
-                // handled by the hot-path match above
-                Op::IterNext(..) | Op::IncrLocal(_) => {}
+                // end of cold-match iterator arms
                 Op::Const(i) => {
                     let v = chunk.consts[i as usize].clone();
                     self.stack.push(v);
