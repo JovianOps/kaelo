@@ -1,0 +1,1 @@
+{"rustc":222933465615791797,"features":"[]","declared_features":"[]","target":17118094829596787886,"profile":11693052761738602154,"path":10763286916239946207,"deps":[],"local":[{"CheckDepInfo":{"dep_info":"release\\.fingerprint\\kaelo-239bd9e82598a480\\dep-lib-kaelo","checksum":false}}],"rustflags":["-C","target-cpu=native"],"config":9396254390672932401,"compile_kind":0}

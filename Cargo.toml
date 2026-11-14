@@ -10,6 +10,7 @@ readme = "README.md"
 [lib]
 name = "kaelo"
 path = "src/lib.rs"
+crate-type = ["lib", "cdylib", "staticlib"]
 
 [[bin]]
 name = "kaelo"

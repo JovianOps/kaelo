@@ -99,7 +99,30 @@ statements.
 | Frozen arrays | `let a = [1,2]; push(a, 3);` is rejected |
 | Step limit | runaway loops stop with an error instead of hanging |
 
-## Embedding
+## Embedding from C or C++
+
+`kaelo` builds as a `cdylib`/`staticlib`. `include/kaelo.h` is the whole surface:
+open a handle, run a script, call script functions per frame, read the last error.
+`examples/game_host.c` is a complete host with a 600-frame loop.
+
+```c
+Kaelo *k = kaelo_open();
+kaelo_run(k, "var x = 0; fn update(dt) { x = x + 1; } fn draw() { }");
+kaelo_host_fn0(k, "draw", on_draw);
+
+for (int i = 0; i < 600; i++) {
+    kaelo_call_float(k, "update", 1.0 / 60.0);
+    kaelo_call0(k, "draw");
+}
+kaelo_close(k);
+```
+
+Build: `cargo build --release`, then link `target/release/kaelo.lib` (MSVC) or
+`-lkaelo` (gcc/clang). The ABI is exercised by `tests/c_abi.rs` — 4 tests that call
+the exported symbols directly, so the calling convention and the string ownership
+rules are covered on every `cargo test`.
+
+## Embedding from Rust
 
 ```rust
 use kaelo::{Engine, Value};
