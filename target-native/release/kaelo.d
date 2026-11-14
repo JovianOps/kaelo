@@ -1,1 +1,0 @@
-C:\Users\RDC\Desktop\kaelo\target-native\release\kaelo.exe: C:\Users\RDC\Desktop\kaelo\src\ast.rs C:\Users\RDC\Desktop\kaelo\src\compiler.rs C:\Users\RDC\Desktop\kaelo\src\lexer.rs C:\Users\RDC\Desktop\kaelo\src\lib.rs C:\Users\RDC\Desktop\kaelo\src\main.rs C:\Users\RDC\Desktop\kaelo\src\parser.rs C:\Users\RDC\Desktop\kaelo\src\token.rs C:\Users\RDC\Desktop\kaelo\src\vm.rs
