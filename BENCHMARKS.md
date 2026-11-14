@@ -22,8 +22,14 @@ sh examples/bench_all.sh    # kaelo side
 ## Where this stands
 
 kaelo 0.1 is **not faster than CPython 3.14**. It is 1.6–3.0x slower across a
-representative mix, and far slower on repeated string concatenation (CPython reuses
-the buffer when a string has one reference; kaelo always allocates).
+representative mix, and far slower on repeated string concatenation.
+
+Strings are now `Rc<String>` so a uniquely-owned buffer can be appended in place
+instead of reallocated. That helped the `strcat` case only marginally (40 ms ->
+37 ms): in `s = s + "ab"` the left operand is a second reference held by the
+stack, so the in-place path is not reached. CPython wins that case by reusing the
+buffer when the string's refcount is 1. A compound-append operator that moves the
+slot value out before growing it would fix it; not in 0.1.
 
 Measured cost: about 15 ns per executed instruction on the `loop` case, against
 about 8.5 ns for CPython's specialised interpreter. A switch-dispatch VM with a
