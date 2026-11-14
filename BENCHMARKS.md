@@ -5,12 +5,12 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 811 ms | 596 ms | 1.36x slower |
-| `grid` — 1000x1000 nested loop with `total = total + x * y` | 108 ms | 71 ms | 1.52x slower |
-| `strcat2` — 20k `s += "ab"` (compound append) | **1.9 ms** | 2.4 ms | **1.3x faster** |
-| `strcat` — 20k `s = s + "ab"` (allocating form) | 26 ms | 2.4 ms | 11x slower |
-| `fib` — recursive fib(25) | 23.9 ms | 14.8 ms | 1.61x slower |
-| `sum` — build a 200k array, then sum it | 51.0 ms | 23.3 ms | 2.19x slower |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 805 ms | 736 ms | 1.09x slower |
+| `grid` — 1000x1000 nested loop with `total = total + x * y` | 100 ms | 75 ms | 1.34x slower |
+| `strcat2` — 20k `s += "ab"` (compound append) | **1.9 ms** | 2.8 ms | **1.5x faster** |
+| `strcat` — 20k `s = s + "ab"` (allocating form) | 27.6 ms | 3.2 ms | 8.6x slower |
+| `fib` — recursive fib(25) | 23.6 ms | 14.7 ms | 1.60x slower |
+| `sum` — build a 200k array, then sum it | 53.1 ms | 20.4 ms | 2.60x slower |
 
 Both sides in the same session, best of 3. This machine's CPython moves 20-25%
 between sessions (596 ms to 763 ms for the same `loop` script), so ratios are only
