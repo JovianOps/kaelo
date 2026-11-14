@@ -151,7 +151,12 @@ impl Parser {
             }
             Tok::While => {
                 self.bump();
-                let cond = self.expression()?;
+                // `while x < n {` must not read the body brace as a struct literal
+                let saved = self.no_struct_lit;
+                self.no_struct_lit = true;
+                let cond = self.expression();
+                self.no_struct_lit = saved;
+                let cond = cond?;
                 let body = self.block()?;
                 Ok(Stmt::While { cond, body })
             }
