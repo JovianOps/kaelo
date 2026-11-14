@@ -5,12 +5,15 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1431 ms | 614 ms | 2.3× slower |
-| `grid` — 1000×1000 nested loop with `total = total + x * y` | 129 ms | 72 ms | 1.8× slower |
-| `strcat2` — 20k `s += "ab"` (compound append) | **2.0 ms** | 2.3 ms | **1.1x faster** |
-| `strcat` — 20k `s = s + "ab"` (allocating form) | 32 ms | 2.3 ms | 13× slower |
-| `fib` — recursive fib(25) | 26.6 ms | 14.9 ms | 1.8× slower |
-| `sum` — build a 200k array, then sum it | 65.5 ms | 20.9 ms | 3.1× slower |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1321 ms | 628 ms | 2.1x slower |
+| `grid` — 1000x1000 nested loop with `total = total + x * y` | 125 ms | 73 ms | 1.7x slower |
+| `strcat2` — 20k `s += "ab"` (compound append) | **2.0 ms** | 2.4 ms | **1.2x faster** |
+| `strcat` — 20k `s = s + "ab"` (allocating form) | 25.8 ms | 2.4 ms | 11x slower |
+| `fib` — recursive fib(25) | 23.4 ms | 15.4 ms | 1.5x slower |
+| `sum` — build a 200k array, then sum it | 62.5 ms | 22.4 ms | 2.8x slower |
+
+Best of 3 on both sides. The `loop` number in particular moves 10% between runs on
+this machine, so treat 1.5-2.8x as the real band rather than the exact digits.
 
 Run them:
 
@@ -23,7 +26,7 @@ sh examples/bench_all.sh    # kaelo side
 ## Where this stands
 
 kaelo 0.1 is **faster than CPython 3.14 on one workload and slower on the rest**.
-It wins string building with `+=` (2.0 ms vs 2.3 ms) and is 1.8–3.1x slower on
+It wins string building with `+=` (2.0 ms vs 2.4 ms) and is 1.5-2.8x slower on
 integer loops, nested loops, recursion and array building.
 
 `s += "ab"` is the fast path: the `+=` operator moves the slot value out before

@@ -140,12 +140,12 @@ Measured in process, best of 3, Rust 1.99 release vs CPython 3.14. See
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| 10M-iteration integer loop | 1431 ms | 614 ms | 2.3x slower |
-| 1000x1000 nested loop | 129 ms | 72 ms | 1.8x slower |
-| 20k `s += "ab"` appends | **2.0 ms** | 2.3 ms | **faster** |
-| 20k `s = s + "ab"` appends | 32 ms | 2.3 ms | 13x slower |
-| recursive fib(25) | 26.6 ms | 14.9 ms | 1.8x slower |
-| build + sum a 200k array | 65.5 ms | 20.9 ms | 3.1x slower |
+| 10M-iteration integer loop | 1321 ms | 628 ms | 2.1x slower |
+| 1000x1000 nested loop | 125 ms | 73 ms | 1.7x slower |
+| 20k `s += "ab"` appends | **2.0 ms** | 2.4 ms | **faster** |
+| 20k `s = s + "ab"` appends | 26 ms | 2.4 ms | 11x slower |
+| recursive fib(25) | 23.4 ms | 15.4 ms | 1.5x slower |
+| build + sum a 200k array | 62.5 ms | 22.4 ms | 2.8x slower |
 
 **kaelo is not uniformly faster than CPython.** It wins on string building with
 `+=` (the buffer grows in place) and loses on integer-heavy loops and recursion,
