@@ -363,6 +363,21 @@ impl Compiler {
                 }
                 Ok(())
             }
+            Stmt::Expr(Expr::Assign(name, val)) => {
+                // `x = v;` as a statement: the value is discarded, so skip the
+                // re-push and the Pop (4 instructions saved per assignment in a loop)
+                self.expr(val, ctx)?;
+                match ctx.resolve_local(name) {
+                    Some(slot) => {
+                        ctx.emit(Op::StoreLocal(slot));
+                    }
+                    None => {
+                        let gid = self.name_id(name);
+                        ctx.emit(Op::StoreGlobal(gid));
+                    }
+                }
+                Ok(())
+            }
             Stmt::Expr(e) => {
                 self.expr(e, ctx)?;
                 ctx.emit(Op::Pop);

@@ -544,6 +544,93 @@ fn step(&mut self) -> R<Value> {
             };
             ip += 1;
 
+            // hot path first: these dominate loop bodies, and keeping them in a
+            // small match (instead of inside a 60-arm match that calls through
+            // &mut self) lets the stack pointer and ip stay in registers
+            match op {
+                Op::Const(i) => {
+                    let c = chunk.consts[i as usize].clone();
+                    self.stack.push(c);
+                    continue;
+                }
+                Op::Pop => {
+                    self.stack.pop();
+                    continue;
+                }
+                Op::LoadLocal(s) => {
+                    let v = self.stack.get(base + s as usize).cloned().unwrap_or(Value::None);
+                    self.stack.push(v);
+                    continue;
+                }
+                Op::StoreLocal(s) => {
+                    let v = self.stack.pop().unwrap_or(Value::None);
+                    let at = base + s as usize;
+                    if at < self.stack.len() {
+                        self.stack[at] = v;
+                    } else {
+                        self.stack.push(v);
+                    }
+                    continue;
+                }
+                Op::LoadGlobal(g) => {
+                    let v = self.globals.get(g as usize).cloned().unwrap_or(Value::None);
+                    self.stack.push(v);
+                    continue;
+                }
+                Op::StoreGlobal(g) => {
+                    let v = self.stack.pop().unwrap_or(Value::None);
+                    let at = g as usize;
+                    if at >= self.globals.len() {
+                        self.globals.resize(at + 1, Value::None);
+                        self.global_kind.resize(at + 1, 0);
+                    }
+                    if self.global_kind[at] == 0 {
+                        return Err(RtError::new(format!(
+                            "undefined variable '{}'",
+                            self.global_names.get(at).cloned().unwrap_or_else(|| Rc::from("?"))
+                        )));
+                    }
+                    if self.global_kind[at] == 1 {
+                        return Err(RtError::new(format!(
+                            "cannot assign to '{}': declared with let (use var)",
+                            self.global_names.get(at).cloned().unwrap_or_else(|| Rc::from("?"))
+                        )));
+                    }
+                    self.globals[at] = v;
+                    self.global_kind[at] = 2;
+                    continue;
+                }
+                Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Eq | Op::Ne | Op::Lt | Op::Le | Op::Gt | Op::Ge => {
+                    let b = self.stack.pop().unwrap_or(Value::None);
+                    let a = self.stack.pop().unwrap_or(Value::None);
+                    if let (Value::Int(x), Value::Int(y)) = (&a, &b) {
+                        let (x, y) = (*x, *y);
+                        let v = int_binop(op, x, y)?;
+                        self.stack.push(v);
+                        continue;
+                    }
+                    let v = self.binop(op, a, b)?;
+                    self.stack.push(v);
+                    continue;
+                }
+                Op::Jump(off) => {
+                    ip = (ip as i32 + off) as usize;
+                    continue;
+                }
+                Op::JumpIfFalse(off) => {
+                    let a = self.stack.pop().unwrap_or(Value::None);
+                    if !a.truthy()? {
+                        ip = (ip as i32 + off) as usize;
+                    }
+                    continue;
+                }
+                Op::Loop(off) => {
+                    ip = (ip as i32 + off) as usize;
+                    continue;
+                }
+                _ => {}
+            }
+
             match op {
                 Op::Const(i) => {
                     let v = chunk.consts[i as usize].clone();

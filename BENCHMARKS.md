@@ -5,15 +5,17 @@ Best of 3, both sides measured **in process** — no interpreter start-up in the
 
 | Workload | kaelo 0.1 | CPython 3.14 | ratio |
 |---|---|---|---|
-| `loop` — 10M iterations of `s = s + i; i = i + 1` | 1130 ms | 628 ms | 1.8x slower |
-| `grid` — 1000x1000 nested loop with `total = total + x * y` | 123 ms | 73 ms | 1.7x slower |
-| `strcat2` — 20k `s += "ab"` (compound append) | **2.0 ms** | 2.4 ms | **1.2x faster** |
-| `strcat` — 20k `s = s + "ab"` (allocating form) | 25.8 ms | 2.4 ms | 11x slower |
-| `fib` — recursive fib(25) | 24.0 ms | 15.4 ms | 1.6x slower |
-| `sum` — build a 200k array, then sum it | 60.5 ms | 22.4 ms | 2.7x slower |
+| `loop` — 10M iterations of `s = s + i; i = i + 1` | 866 ms | 763 ms | 1.13x slower |
+| `grid` — 1000x1000 nested loop with `total = total + x * y` | 114 ms | 85 ms | 1.33x slower |
+| `strcat2` — 20k `s += "ab"` (compound append) | **1.8 ms** | 2.4 ms | **1.3x faster** |
+| `strcat` — 20k `s = s + "ab"` (allocating form) | 26 ms | 2.9 ms | 9x slower |
+| `fib` — recursive fib(25) | 26.7 ms | 15.6 ms | 1.7x slower |
+| `sum` — build a 200k array, then sum it | 69.4 ms | 23.6 ms | 2.9x slower |
 
-Best of 3 on both sides. The `loop` number in particular moves 10% between runs on
-this machine, so treat 1.5-2.8x as the real band rather than the exact digits.
+Both sides measured in the same session, best of 3. This machine's CPython moves
+about 20% between sessions (628 ms vs 763 ms for the same `loop` script), so the
+ratios are only trustworthy when both sides are timed together — always re-run
+`python bench/bench.py` alongside the kaelo runs.
 
 Run them:
 
@@ -25,9 +27,10 @@ sh examples/bench_all.sh    # kaelo side
 
 ## Where this stands
 
-kaelo 0.1 is **faster than CPython 3.14 on one workload and slower on the rest**.
-It wins string building with `+=` (2.0 ms vs 2.4 ms) and is 1.5-2.8x slower on
-integer loops, nested loops, recursion and array building.
+kaelo 0.1 is **at parity on integer loops and faster on string building**, and
+behind on recursion and array building. The loop went 1321 -> 866 ms across this
+release by cutting instructions executed rather than making each instruction
+cheaper (see below), which is the only lever that has actually paid off.
 
 `s += "ab"` is the fast path: the `+=` operator moves the slot value out before
 growing it, so the buffer is uniquely owned and grows in place — 20k appends in
@@ -42,7 +45,11 @@ Measured cost: about 15 ns per executed instruction on the `loop` case, against
 about 8.5 ns for CPython's specialised interpreter. CPython 3.14 has inline caches
 and adaptive specialisation.
 
-Caching the current `Chunk` in a local (one `Rc` clone per frame switch instead of
+Two wins in this release, both measured:
+
+- `x = v;` as a statement no longer re-pushes the value just to pop it (4 of the 17
+  instructions in a loop body). `loop` 1130 -> 866 ms.
+- Caching the current `Chunk` in a local (one `Rc` clone per frame switch instead of
 an `Rc` deref plus a `Vec` index on every instruction fetch) and keeping `ip`/`base`
 in locals rather than writing `ip` back to the frames `Vec` each instruction took
 `loop` from 1321 ms to 1130 ms and `sum` from 62.5 to 60.5 ms. That is the only VM
