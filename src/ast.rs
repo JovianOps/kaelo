@@ -41,6 +41,7 @@ pub enum Expr {
     Logical(LogicOp, Box<Expr>, Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     StructInit(String, Vec<(String, Expr)>),
+    Range(Box<Expr>, Box<Expr>),
     Assign(String, Box<Expr>),
     FieldAssign(Box<Expr>, String, Box<Expr>),
     IndexAssign(Box<Expr>, Box<Expr>, Box<Expr>),

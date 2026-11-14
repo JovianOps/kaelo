@@ -523,6 +523,150 @@ impl Vm {
             let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
             Ok(Value::Int(d.as_millis() as i64))
         });
+
+        // ---- strings ----
+        def!("upper", None, |_, args| match args.first() {
+            Some(Value::Str(s)) => Ok(Value::Str(Rc::new(s.to_uppercase()))),
+            Some(o) => Err(RtError::new(format!("upper() needs string, got {}", o.type_name()))),
+            None => Err(RtError::new("upper() needs 1 argument")),
+        });
+
+        def!("lower", None, |_, args| match args.first() {
+            Some(Value::Str(s)) => Ok(Value::Str(Rc::new(s.to_lowercase()))),
+            Some(o) => Err(RtError::new(format!("lower() needs string, got {}", o.type_name()))),
+            None => Err(RtError::new("lower() needs 1 argument")),
+        });
+
+        def!("trim", None, |_, args| match args.first() {
+            Some(Value::Str(s)) => Ok(Value::Str(Rc::new(s.trim().to_string()))),
+            Some(o) => Err(RtError::new(format!("trim() needs string, got {}", o.type_name()))),
+            None => Err(RtError::new("trim() needs 1 argument")),
+        });
+
+        def!("chars", None, |_, args| match args.first() {
+            Some(Value::Str(s)) => Ok(Value::Array(Rc::new(ArrayVal {
+                items: RefCell::new(s.chars().map(|c| Value::Str(Rc::new(c.to_string()))).collect()),
+                frozen: false,
+            }))),
+            Some(o) => Err(RtError::new(format!("chars() needs string, got {}", o.type_name()))),
+            None => Err(RtError::new("chars() needs 1 argument")),
+        });
+
+        def!("starts_with", None, |_, args| match (args.first(), args.get(1)) {
+            (Some(Value::Str(s)), Some(Value::Str(p))) => Ok(Value::Bool(s.starts_with(p.as_str()))),
+            _ => Err(RtError::new("starts_with() needs two strings")),
+        });
+
+        def!("ends_with", None, |_, args| match (args.first(), args.get(1)) {
+            (Some(Value::Str(s)), Some(Value::Str(p))) => Ok(Value::Bool(s.ends_with(p.as_str()))),
+            _ => Err(RtError::new("ends_with() needs two strings")),
+        });
+
+        def!("split", None, |_, args| match (args.first(), args.get(1)) {
+            (Some(Value::Str(s)), Some(Value::Str(sep))) => Ok(Value::Array(Rc::new(ArrayVal {
+                items: RefCell::new(
+                    s.split(sep.as_str()).map(|p| Value::Str(Rc::new(p.to_string()))).collect(),
+                ),
+                frozen: false,
+            }))),
+            _ => Err(RtError::new("split() needs (string, separator)")),
+        });
+
+        def!("join", None, |_, args| match (args.first(), args.get(1)) {
+            (Some(Value::Array(a)), Some(Value::Str(sep))) => {
+                let parts: Vec<String> = a.items.borrow().iter().map(|v| v.render()).collect();
+                Ok(Value::Str(Rc::new(parts.join(sep.as_str()))))
+            }
+            _ => Err(RtError::new("join() needs (array, separator)")),
+        });
+
+        def!("replace", None, |_, args| match (args.first(), args.get(1), args.get(2)) {
+            (Some(Value::Str(s)), Some(Value::Str(from)), Some(Value::Str(to))) => {
+                Ok(Value::Str(Rc::new(s.replace(from.as_str(), to.as_str()))))
+            }
+            _ => Err(RtError::new("replace() needs (string, from, to)")),
+        });
+
+        // ---- arrays ----
+        def!("contains", None, |_, args| match (args.first(), args.get(1)) {
+            (Some(Value::Array(a)), Some(v)) => Ok(Value::Bool(a.items.borrow().iter().any(|x| x.render() == v.render()))),
+            (Some(Value::Str(s)), Some(Value::Str(p))) => Ok(Value::Bool(s.contains(p.as_str()))),
+            _ => Err(RtError::new("contains() needs (array|string, value)")),
+        });
+
+        def!("reverse", None, |_, args| match args.first() {
+            Some(Value::Array(a)) => {
+                if a.frozen {
+                    return Err(RtError::new("cannot mutate an immutable array (declared with let)"));
+                }
+                a.items.borrow_mut().reverse();
+                Ok(Value::None)
+            }
+            _ => Err(RtError::new("reverse() needs an array")),
+        });
+
+        def!("sort", None, |_, args| match args.first() {
+            Some(Value::Array(a)) => {
+                if a.frozen {
+                    return Err(RtError::new("cannot mutate an immutable array (declared with let)"));
+                }
+                let mut items = a.items.borrow_mut();
+                let all_int = items.iter().all(|v| matches!(v, Value::Int(_)));
+                if all_int {
+                    items.sort_by_key(|v| match v { Value::Int(n) => *n, _ => 0 });
+                } else {
+                    items.sort_by(|x, y| x.render().cmp(&y.render()));
+                }
+                Ok(Value::None)
+            }
+            _ => Err(RtError::new("sort() needs an array")),
+        });
+
+        def!("slice", None, |_, args| match (args.first(), args.get(1), args.get(2)) {
+            (Some(Value::Array(a)), Some(Value::Int(lo)), Some(Value::Int(hi))) => {
+                let items = a.items.borrow();
+                let len = items.len() as i64;
+                let lo = (*lo).max(0).min(len) as usize;
+                let hi = (*hi).max(0).min(len) as usize;
+                if lo > hi {
+                    return Err(RtError::new("slice() start after end"));
+                }
+                Ok(Value::Array(Rc::new(ArrayVal {
+                    items: RefCell::new(items[lo..hi].to_vec()),
+                    frozen: false,
+                })))
+            }
+            _ => Err(RtError::new("slice() needs (array, start, end)")),
+        });
+
+        def!("range", None, |_, args| match (args.first(), args.get(1)) {
+            (Some(Value::Int(lo)), Some(Value::Int(hi))) => {
+                if hi < lo {
+                    return Err(RtError::new("range() end before start"));
+                }
+                if hi - lo > 10_000_000 {
+                    return Err(RtError::new("range() too large (max 10M)"));
+                }
+                let items: Vec<Value> = (*lo..*hi).map(Value::Int).collect();
+                Ok(Value::Array(Rc::new(ArrayVal {
+                    items: RefCell::new(items),
+                    frozen: false,
+                })))
+            }
+            _ => Err(RtError::new("range() needs two ints")),
+        });
+
+        // ---- misc ----
+        def!("type", None, |_, args| match args.first() {
+            Some(v) => Ok(Value::Str(Rc::new(v.type_name().to_string()))),
+            None => Err(RtError::new("type() needs 1 argument")),
+        });
+
+        def!("exit", None, |_, args| {
+            let code = match args.first() { Some(Value::Int(n)) => *n, _ => 0 };
+            let _ = std::io::stdout().flush();
+            std::process::exit(code as i32);
+        });
     }
 
     pub fn run(&mut self, chunk: Rc<Chunk>) -> R<Value> {

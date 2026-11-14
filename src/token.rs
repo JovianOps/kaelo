@@ -41,6 +41,7 @@ pub enum Tok {
     Or,
     Arrow,   // ->
     FatArrow, // =>
+    Dot2,     // ..
     Assign,  // =
     Comma,
     Semicolon,

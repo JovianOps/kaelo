@@ -90,6 +90,11 @@ Types: `int` (64-bit, checked), `float`, `bool`, `string`, `array`, `struct`,
 `function`, `none`. Comments are `//` and `#`. No semicolons are needed after block
 statements.
 
+`for i in 0..n` iterates a range. The standard library covers strings
+(`upper`, `lower`, `trim`, `chars`, `split`, `join`, `replace`, `starts_with`,
+`ends_with`, `contains`), arrays (`push`, `pop`, `len`, `sort`, `reverse`, `slice`,
+`contains`), and reflection (`type`).
+
 ## Memory safety rules
 
 | Rule | What happens |
@@ -188,8 +193,8 @@ globals through a pointer, measured at 82x on a loop) and an unboxed value stack
 ## Status
 
 0.1. The language, memory-safety rules, embedding API, C ABI and CLI are complete
-and covered by 23 tests. The standard library is deliberately small (print, len,
-push, pop, str, int, float, math, seeded random, clock). Nested `fn` declarations
+and covered by 23 tests. The standard library covers strings, arrays, math,
+seeded random and the clock. Nested `fn` declarations
 are not supported, and the JIT does not implement checked overflow or the step
 limit, which is why it is opt-in.
 

@@ -164,13 +164,22 @@ impl Parser {
                 self.bump();
                 let name = self.expect_ident()?;
                 self.expect(Tok::In)?;
-                // `for x in xs {` must not read the loop body brace as a struct literal
+                // `for x in xs {` must not read the loop body brace as a struct
+                // literal, and `for i in 0..n` is a range value
                 let saved = self.no_struct_lit;
                 self.no_struct_lit = true;
-                let iter = self.expression();
+                let first = self.expression();
+                let first = first?;
+                let iter = if *self.peek() == Tok::Dot2 {
+                    self.bump();
+                    let hi = self.expression()?;
+                    Expr::Range(Box::new(first), Box::new(hi))
+                } else {
+                    first
+                };
+                let body = self.block();
                 self.no_struct_lit = saved;
-                let iter = iter?;
-                let body = self.block()?;
+                let body = body?;
                 Ok(Stmt::ForIn { name, iter, body })
             }
             Tok::Break => {

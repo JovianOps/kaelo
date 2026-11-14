@@ -290,7 +290,16 @@ impl Compiler {
                 let i_slot = ctx.declare_local("@i", true);
                 let x_slot = ctx.declare_local(name, false);
 
-                self.expr(iter, ctx)?;
+                if let Expr::Range(lo, hi) = iter {
+                    // build the range with the runtime helper, then iterate it
+                    self.expr(lo, ctx)?;
+                    self.expr(hi, ctx)?;
+                    let rid = self.name_id("range");
+                    ctx.emit(Op::LoadGlobal(rid));
+                    ctx.emit(Op::Call(2));
+                } else {
+                    self.expr(iter, ctx)?;
+                }
                 ctx.emit(Op::StoreLocal(arr_slot));
                 ctx.emit(Op::None);
                 ctx.emit(Op::StoreLocal(i_slot));
@@ -376,6 +385,11 @@ impl Compiler {
 
     fn expr(&mut self, e: &Expr, ctx: &mut FnCtx) -> Result<(), String> {
         match e {
+            // a range is only meaningful as a for-loop iterable; elsewhere it is
+            // a compile error rather than a silently wrong value
+            Expr::Range(_, _) => {
+                return Err("a range is only valid after `in` in a for loop".to_string())
+            }
             Expr::Int(i) => {
                 let idx = ctx.const_idx(Value::Int(*i));
                 ctx.emit(Op::Const(idx));

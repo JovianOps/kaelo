@@ -204,7 +204,10 @@ impl<'a> Lexer<'a> {
             b',' => { self.bump(); Tok::Comma }
             b';' => { self.bump(); Tok::Semicolon }
             b':' => { self.bump(); Tok::Colon }
-            b'.' => { self.bump(); Tok::Dot }
+            b'.' => {
+                self.bump();
+                if self.peek() == b'.' { self.bump(); Tok::Dot2 } else { Tok::Dot }
+            }
             b'(' => { self.bump(); Tok::LParen }
             b')' => { self.bump(); Tok::RParen }
             b'{' => { self.bump(); Tok::LBrace }
