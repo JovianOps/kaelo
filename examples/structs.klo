@@ -1,0 +1,27 @@
+// Structs, field mutation and bounds-checked arrays.
+struct Vec2 {
+    x,
+    y,
+}
+
+fn length2(v) {
+    return sqrt(v.x * v.x + v.y * v.y);
+}
+
+var a = Vec2 { x: 3, y: 4 };
+print("len = " + str(length2(a)));
+
+a.x = 6;
+a.y = 8;
+print("len = " + str(length2(a)));
+
+var nums = [1, 2, 3];
+push(nums, 4);
+var total = 0;
+for n in nums {
+    total = total + n;
+}
+print("sum = " + str(total));
+
+// out-of-bounds is a clean error, not a crash
+let bad = nums[9];

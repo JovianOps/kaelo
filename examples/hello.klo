@@ -1,0 +1,8 @@
+// Kaelo — hello world
+fn main() {
+    print("hello, world");
+    let name = "kaelo";
+    print("running on " + name);
+}
+
+main();

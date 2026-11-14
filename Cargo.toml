@@ -1,0 +1,23 @@
+[package]
+name = "kaelo"
+version = "0.1.0"
+edition = "2021"
+description = "Kaelo — a fast, memory-safe, embeddable language for games and tools"
+license = "MIT"
+repository = "https://github.com/JovianOps/kaelo"
+readme = "README.md"
+
+[lib]
+name = "kaelo"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kaelo"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
