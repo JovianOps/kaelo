@@ -23,6 +23,6 @@ codegen-units = 1
 strip = true
 
 [dependencies]
-cranelift-codegen = "0.137.1"
+cranelift-codegen = "0.138.0"
 cranelift-frontend = "0.137.1"
 target-lexicon = "0.13.6"
